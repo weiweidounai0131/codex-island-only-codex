@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    runs-on: macos-15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install create-dmg
+        run: npm install --global create-dmg
+
+      - name: Build DMG
+        run: ./release.sh
+
+      - name: Compute checksum
+        id: sha
+        run: |
+          set -euo pipefail
+          DMG="dist/CodexIsland-oc-${GITHUB_REF_NAME#v}.dmg"
+          if [[ ! -f "$DMG" ]]; then
+            echo "::error::expected DMG not found at $DMG"
+            exit 1
+          fi
+          echo "sha=$(shasum -a 256 "$DMG" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Build release notes
+        run: |
+          {
+            echo "## CodexIsland oc ${GITHUB_REF_NAME}"
+            echo
+            echo "Codex-only build of CodexIsland."
+            echo
+            echo "## Install"
+            echo
+            echo "Download the DMG below, drag \`CodexIsland oc.app\` into \`/Applications\`, then run:"
+            echo
+            echo '```sh'
+            echo 'xattr -dr com.apple.quarantine "/Applications/CodexIsland oc.app"'
+            echo '```'
+            echo
+            echo "**SHA-256:** \`${{ steps.sha.outputs.sha }}\`"
+            echo
+            echo "Unsigned build. See README for details."
+          } > release_notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/CodexIsland-oc-*.dmg
+          body_path: release_notes.md
