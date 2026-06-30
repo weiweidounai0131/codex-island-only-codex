@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 APP_NAME="CodexIsland oc"
-BUNDLE_ID="dev.codexisland.CodexIsland"
+BUNDLE_ID="com.weiweidounai0131.CodexIslandOC"
 VERSION="$(cat VERSION)"
 if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "error: VERSION must be X.Y.Z (got '$VERSION')" >&2
@@ -95,7 +95,6 @@ cat > "$CONTENTS/Info.plist" <<EOF
   <key>CFBundleIconFile</key><string>CodexIsland</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSMinimumSystemVersion</key><string>$DEPLOYMENT_TARGET</string>
-  <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>NSHumanReadableCopyright</key><string>Copyright © 2026 Eric Park. MIT licensed.</string>

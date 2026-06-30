@@ -11,7 +11,7 @@ Open an issue and include:
 - macOS version from `sw_vers`.
 - Whether the Mac has a physical notch and how many displays are connected.
 - A screenshot if the island, expanded panel, or settings layout looks wrong.
-- Output of `defaults read dev.codexisland.CodexIsland` for settings-related
+- Output of `defaults read com.weiweidounai0131.CodexIslandOC` for settings-related
   bugs, with anything sensitive removed.
 - Whether Codex data is populated or the panel reports `no codex auth`.
 

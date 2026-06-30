@@ -19,6 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsShortcutMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        PreferenceMigration.importLegacyPreferencesIfNeeded()
+
         NSApp.setActivationPolicy(.accessory)
         island = IslandWindowController()
         island?.show()
