@@ -74,7 +74,7 @@ struct NotchPeekPill: View {
     /// window" label from an active "5h until reset" countdown — same
     /// glyph shape, weaker visual presence.
     private var resetLabel: some View {
-        Text(resetText ?? "5h")
+        Text(resetText ?? usage.compactWindowLengthText ?? "5h")
             .font(Typography.bodyNumber)
             .foregroundStyle(.white.opacity(resetText == nil ? 0.45 : 0.70))
     }
@@ -105,7 +105,7 @@ struct NotchPeekPill: View {
         // (typically a fresh 5h period before the first OAuth call lands).
         // Treat it as a passive non-error so the pill still renders with
         // the 5h window-length fallback instead of collapsing to "—%".
-        guard let err = usage.error, err != "no data" else { return false }
+        guard let err = usage.error, err != "no data", err != "unavailable" else { return false }
         return usage.usedPercent == 0
     }
 
@@ -120,7 +120,9 @@ struct NotchPeekPill: View {
         guard let resetAt = usage.resetAt else { return nil }
         let remaining = resetAt.timeIntervalSinceNow
         guard remaining > 0 else { return nil }
-        if remaining >= 3600 {
+        if remaining >= 86_400 {
+            return "\(Int((remaining / 86_400).rounded(.down)))d"
+        } else if remaining >= 3600 {
             return "\(Int((remaining / 3600).rounded(.down)))h"
         } else {
             return "\(max(1, Int((remaining / 60).rounded(.down))))m"

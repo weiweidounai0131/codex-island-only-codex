@@ -32,10 +32,12 @@ struct ChartsBlock: View {
     var body: some View {
         VStack(spacing: 6) {
             HStack(spacing: 18) {
-                ChartTile(style: style, color: color, labelKey: "5h",
+                ChartTile(style: style, color: color, defaultLabelKey: "5h",
                           window: usage.fiveHour, seed: seed)
-                ChartTile(style: style, color: color, labelKey: "week",
-                          window: usage.weekly, seed: seed + 1)
+                if !usage.weekly.isUnavailable {
+                    ChartTile(style: style, color: color, defaultLabelKey: "week",
+                              window: usage.weekly, seed: seed + 1)
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -46,7 +48,7 @@ struct ChartsBlock: View {
 struct ChartTile: View {
     let style: ChartStyle
     let color: Color
-    let labelKey: String
+    let defaultLabelKey: String
     let window: WindowUsage
     let seed: Int
     @ObservedObject private var usageDisplay = UsageDisplayModeStore.shared
@@ -58,7 +60,7 @@ struct ChartTile: View {
     var body: some View {
         let value = window.displayedFraction(mode: usageDisplay.mode) * 100   // 0-100
         let sub = subCaption()
-        let label = L10n.tr(labelKey)
+        let label = L10n.tr(window.displayLabel(defaultKey: defaultLabelKey))
 
         Group {
             switch style {
@@ -91,7 +93,7 @@ struct ChartTile: View {
         // OAuth call lands. Hide it so the tile reads as a passive
         // window-context cue (the "5h"/"week" header label communicates the
         // window type) instead of looking broken. Real errors still surface.
-        if let err = window.error, err != "no data" {
+        if let err = window.error, err != "no data", err != "unavailable" {
             return err
         }
         return ""
@@ -102,7 +104,7 @@ struct ChartTile: View {
             let delta = max(0, r.timeIntervalSinceNow)
             return "↻ " + Duration.compact(delta)
         }
-        if let err = window.error, err != "no data" {
+        if let err = window.error, err != "no data", err != "unavailable" {
             return err
         }
         return ""

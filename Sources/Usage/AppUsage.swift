@@ -6,10 +6,21 @@ struct WindowUsage {
     let usedPercent: Double
     let resetAt: Date?
     let error: String?
+    let windowSeconds: Int?
 
     static let unknown = WindowUsage(usedPercent: 0, resetAt: nil, error: "no data")
+    static let unavailable = WindowUsage(usedPercent: 0, resetAt: nil, error: "unavailable")
+
+    init(usedPercent: Double, resetAt: Date?, error: String?, windowSeconds: Int? = nil) {
+        self.usedPercent = usedPercent
+        self.resetAt = resetAt
+        self.error = error
+        self.windowSeconds = windowSeconds
+    }
 
     var percentInt: Int { Int((usedPercent * 100).rounded()) }
+
+    var isUnavailable: Bool { error == "unavailable" }
 
     func displayedFraction(mode: UsageDisplayMode) -> Double {
         switch mode {
@@ -22,6 +33,30 @@ struct WindowUsage {
 
     func displayedPercentInt(mode: UsageDisplayMode) -> Int {
         Int((displayedFraction(mode: mode) * 100).rounded())
+    }
+
+    func displayLabel(defaultKey: String) -> String {
+        guard let seconds = windowSeconds, seconds > 0 else {
+            return defaultKey
+        }
+        if seconds >= 604_800 {
+            return "week"
+        }
+        if seconds >= 86_400 {
+            return "\(Int((Double(seconds) / 86_400).rounded()))d"
+        }
+        if seconds >= 3_600 {
+            return "\(Int((Double(seconds) / 3_600).rounded()))h"
+        }
+        return defaultKey
+    }
+
+    var compactWindowLengthText: String? {
+        guard let seconds = windowSeconds, seconds > 0 else { return nil }
+        if seconds >= 604_800 { return "7d" }
+        if seconds >= 86_400 { return "\(Int((Double(seconds) / 86_400).rounded()))d" }
+        if seconds >= 3_600 { return "\(Int((Double(seconds) / 3_600).rounded()))h" }
+        return nil
     }
 }
 

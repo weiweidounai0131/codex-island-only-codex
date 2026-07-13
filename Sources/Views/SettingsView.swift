@@ -731,12 +731,17 @@ struct SettingsView: View {
             guard let updated = usage.lastUpdated else { return L10n.tr("idle") }
             return L10n.tr("synced %@", Self.relativeFormatter.localizedString(for: updated, relativeTo: Date()))
         }()
-        let nums = "\(windowCaption(u.fiveHour)) / \(windowCaption(u.weekly))"
+        let nums = u.weekly.isUnavailable
+            ? windowCaption(u.fiveHour)
+            : "\(windowCaption(u.fiveHour)) / \(windowCaption(u.weekly))"
         return "\(synced) · \(nums)"
     }
 
     private func windowCaption(_ w: WindowUsage) -> String {
+        if w.isUnavailable { return "" }
         if let err = w.error, w.percentInt == 0 { return "⚠ \(err)" }
-        return "\(w.displayedPercentInt(mode: usageDisplay.mode))%"
+        let pct = "\(w.displayedPercentInt(mode: usageDisplay.mode))%"
+        let label = L10n.tr(w.displayLabel(defaultKey: ""))
+        return label.isEmpty ? pct : "\(label) \(pct)"
     }
 }

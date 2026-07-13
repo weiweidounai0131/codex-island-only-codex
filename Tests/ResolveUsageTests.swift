@@ -77,6 +77,30 @@ struct ResolveUsageTests {
         expect(ClaudeCredentials.rateLimitedMessage == "rate limited", "rateLimitedMessage literal is stable")
         expect(ClaudeCredentials.reauthRequiredMessage == "re-login: claude /login", "reauthRequiredMessage literal is stable")
 
+        // T3 — Codex CLI 0.144+ can return a single primary window where
+        // numeric fields are integers and `secondary_window` is null. That
+        // must render as real usage for the primary window, not "0% / no data".
+        let codexPayload: [String: Any] = [
+            "plan_type": "plus",
+            "rate_limit": [
+                "primary_window": [
+                    "used_percent": 1,
+                    "limit_window_seconds": 604_800,
+                    "reset_at": 1_784_507_726
+                ],
+                "secondary_window": NSNull()
+            ]
+        ]
+        if let codex = UsageFetcher.parseCodexUsagePayload(codexPayload) {
+            expect(codex.plan == "plus", "T3 Codex plan parses")
+            expect(codex.fiveHour.percentInt == 1, "T3 integer used_percent parses as 1%")
+            expect(codex.fiveHour.windowSeconds == 604_800, "T3 Codex window length parses")
+            expect(codex.fiveHour.displayLabel(defaultKey: "5h") == "week", "T3 weekly primary window is labelled week")
+            expect(codex.weekly.isUnavailable, "T3 missing secondary window is unavailable, not no data")
+        } else {
+            expect(false, "T3 Codex payload parses")
+        }
+
         if failures > 0 {
             print("\(failures) failure(s)")
             exit(1)

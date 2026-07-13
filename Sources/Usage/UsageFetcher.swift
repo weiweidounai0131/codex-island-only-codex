@@ -29,14 +29,10 @@ enum UsageFetcher {
             }
 
             guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let rl = obj["rate_limit"] as? [String: Any] else {
+                  let usage = parseCodexUsagePayload(obj) else {
                 return errorPair("parse error")
             }
-            return AppUsage(
-                fiveHour: parseCodexWindow(rl["primary_window"]),
-                weekly: parseCodexWindow(rl["secondary_window"]),
-                plan: obj["plan_type"] as? String
-            )
+            return usage
         } catch {
             return errorPair(error.localizedDescription)
         }
@@ -58,11 +54,50 @@ enum UsageFetcher {
         return token
     }
 
-    private static func parseCodexWindow(_ obj: Any?) -> WindowUsage {
-        guard let d = obj as? [String: Any] else { return .unknown }
-        let used = (d["used_percent"] as? Double) ?? 0
-        let resetAt = (d["reset_at"] as? Double).map { Date(timeIntervalSince1970: $0) }
-        return WindowUsage(usedPercent: used / 100, resetAt: resetAt, error: nil)
+    static func parseCodexUsagePayload(_ obj: [String: Any]) -> AppUsage? {
+        guard let rl = obj["rate_limit"] as? [String: Any] else { return nil }
+        return AppUsage(
+            fiveHour: parseCodexWindow(rl["primary_window"]),
+            weekly: parseCodexWindow(rl["secondary_window"], missingFallback: .unavailable),
+            plan: obj["plan_type"] as? String
+        )
+    }
+
+    private static func parseCodexWindow(_ obj: Any?, missingFallback: WindowUsage = .unknown) -> WindowUsage {
+        guard let d = obj as? [String: Any] else { return missingFallback }
+        let used = doubleValue(d["used_percent"]) ?? 0
+        let resetAt = parseResetDate(d["reset_at"])
+        let windowSeconds = intValue(d["limit_window_seconds"])
+        return WindowUsage(usedPercent: used / 100, resetAt: resetAt, error: nil, windowSeconds: windowSeconds)
+    }
+
+    private static func doubleValue(_ raw: Any?) -> Double? {
+        if let value = raw as? Double { return value }
+        if let value = raw as? Int { return Double(value) }
+        if let value = raw as? String { return Double(value) }
+        return nil
+    }
+
+    private static func intValue(_ raw: Any?) -> Int? {
+        if let value = raw as? Int { return value }
+        if let value = raw as? Double { return Int(value) }
+        if let value = raw as? String { return Int(value) }
+        return nil
+    }
+
+    private static func parseResetDate(_ raw: Any?) -> Date? {
+        if let timestamp = raw as? Double {
+            return Date(timeIntervalSince1970: timestamp)
+        }
+        if let timestamp = raw as? Int {
+            return Date(timeIntervalSince1970: TimeInterval(timestamp))
+        }
+        if let string = raw as? String {
+            let fractional = ISO8601DateFormatter()
+            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return fractional.date(from: string) ?? ISO8601DateFormatter().date(from: string)
+        }
+        return nil
     }
 
     // MARK: - Claude
@@ -133,16 +168,9 @@ enum UsageFetcher {
         // heuristic broke the moment the 5h window reset: utilization values
         // in (0, 1] (e.g. 0.5% used → 0.5) were treated as already-normalized
         // and rendered as 50%–100%. Always divide by 100; clamp below.
-        let raw = (d["utilization"] as? Double) ?? (d["used_percent"] as? Double) ?? 0
+        let raw = doubleValue(d["utilization"]) ?? doubleValue(d["used_percent"]) ?? 0
         let normalized = raw / 100.0
-        var resetAt: Date?
-        if let r = d["resets_at"] as? Double {
-            resetAt = Date(timeIntervalSince1970: r)
-        } else if let s = d["resets_at"] as? String {
-            let f = ISO8601DateFormatter()
-            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            resetAt = f.date(from: s) ?? ISO8601DateFormatter().date(from: s)
-        }
+        let resetAt = parseResetDate(d["resets_at"])
         return WindowUsage(usedPercent: min(1, max(0, normalized)), resetAt: resetAt, error: nil)
     }
 }
