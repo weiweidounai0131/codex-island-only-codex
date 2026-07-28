@@ -1,20 +1,18 @@
-import SwiftUI
 import AppKit
 
 @main
-struct CodexIslandApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    var body: some Scene {
-        // Placeholder scene — `App` requires at least one `Scene`. We never
-        // trigger the system Settings menu (we're a `.accessory` app with
-        // no menu bar), so this stays inert. Settings is shown via our own
-        // SettingsWindowController.
-        Settings { EmptyView() }
-    }
-}
-
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private static var retainedDelegate: AppDelegate?
+
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        retainedDelegate = delegate
+        app.delegate = delegate
+        app.run()
+    }
+
     var island: IslandWindowController?
     private var settingsShortcutMonitor: Any?
 
@@ -24,12 +22,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         island = IslandWindowController()
         island?.show()
-        closeRestoredPlaceholderWindows()
 
-        // Route Cmd+, to our hand-rolled Settings window. Without this, the
-        // inert `Settings { EmptyView() }` scene below claims the shortcut and
-        // opens a blank window. Consuming the event (returning nil) keeps that
-        // empty scene from ever surfacing.
+        // Route Cmd+, to our hand-rolled Settings window. The app now uses a
+        // pure AppKit lifecycle, so there is no SwiftUI Settings scene for
+        // macOS to restore as an empty placeholder window.
         settingsShortcutMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
                event.charactersIgnoringModifiers == "," {
@@ -62,29 +58,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ application: NSApplication, shouldRestoreApplicationState coder: NSCoder) -> Bool {
         false
-    }
-
-    /// SwiftUI's `App` lifecycle requires at least one `Scene`, so we keep an
-    /// inert `Settings { EmptyView() }` placeholder above and open our real
-    /// settings via `SettingsWindowController`. macOS can still restore that
-    /// placeholder across launches before our delegate runs; close only those
-    /// empty SwiftUI windows, leaving the island and the real settings window
-    /// alone.
-    private func closeRestoredPlaceholderWindows() {
-        DispatchQueue.main.async {
-            for window in NSApp.windows where Self.isRestoredPlaceholder(window) {
-                window.close()
-            }
-        }
-    }
-
-    private static func isRestoredPlaceholder(_ window: NSWindow) -> Bool {
-        guard window.isVisible else { return false }
-        if window is BorderlessFloatingWindow { return false }
-        guard let controller = window.contentViewController else { return false }
-        let controllerName = String(describing: type(of: controller))
-        return controllerName.contains("NSHostingController")
-            && window.title.isEmpty
-            && window.contentView?.subviews.isEmpty == false
     }
 }
