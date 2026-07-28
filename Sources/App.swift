@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         island = IslandWindowController()
         island?.show()
+        closeRestoredPlaceholderWindows()
 
         // Route Cmd+, to our hand-rolled Settings window. Without this, the
         // inert `Settings { EmptyView() }` scene below claims the shortcut and
@@ -53,5 +54,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Pin the app to the run loop until the user explicitly quits.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    func application(_ application: NSApplication, shouldSaveApplicationState coder: NSCoder) -> Bool {
+        false
+    }
+
+    func application(_ application: NSApplication, shouldRestoreApplicationState coder: NSCoder) -> Bool {
+        false
+    }
+
+    /// SwiftUI's `App` lifecycle requires at least one `Scene`, so we keep an
+    /// inert `Settings { EmptyView() }` placeholder above and open our real
+    /// settings via `SettingsWindowController`. macOS can still restore that
+    /// placeholder across launches before our delegate runs; close only those
+    /// empty SwiftUI windows, leaving the island and the real settings window
+    /// alone.
+    private func closeRestoredPlaceholderWindows() {
+        DispatchQueue.main.async {
+            for window in NSApp.windows where Self.isRestoredPlaceholder(window) {
+                window.close()
+            }
+        }
+    }
+
+    private static func isRestoredPlaceholder(_ window: NSWindow) -> Bool {
+        guard window.isVisible else { return false }
+        if window is BorderlessFloatingWindow { return false }
+        guard let controller = window.contentViewController else { return false }
+        let controllerName = String(describing: type(of: controller))
+        return controllerName.contains("NSHostingController")
+            && window.title.isEmpty
+            && window.contentView?.subviews.isEmpty == false
     }
 }
