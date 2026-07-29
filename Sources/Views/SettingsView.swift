@@ -17,6 +17,7 @@ struct SettingsView: View {
     @ObservedObject private var alertPrefs = AlertThresholdStore.shared
     @ObservedObject private var spacing = IslandSpacingStore.shared
     @ObservedObject private var usageDisplay = UsageDisplayModeStore.shared
+    @ObservedObject private var quotaMode = CodexQuotaModeStore.shared
     @ObservedObject private var targetDisplay = IslandTargetDisplayStore.shared
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     @ObservedObject private var usage = UsageStore.shared
@@ -132,6 +133,7 @@ struct SettingsView: View {
     private var displayTab: some View {
         VStack(alignment: .leading, spacing: 0) {
             usageDisplaySection
+            quotaModeSection
             chartSection
             costStyleSection
             tokenCountingSection
@@ -647,6 +649,39 @@ struct SettingsView: View {
         )
     }
 
+    private var quotaModeSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionLabel("Codex quota")
+            SettingsRow(
+                title: "Window mode",
+                subtitle: quotaModeSubtitle
+            ) {
+                quotaModeSegmented
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 14)
+        .padding(.bottom, 14)
+    }
+
+    private var quotaModeSubtitle: String {
+        switch quotaMode.mode {
+        case .weekly:
+            return L10n.tr("Show only the weekly Codex limit.")
+        case .hourlyAndWeekly:
+            return L10n.tr("Show 5-hour and weekly Codex limits when the API provides both.")
+        }
+    }
+
+    private var quotaModeSegmented: some View {
+        SegmentedControl(
+            items: CodexQuotaMode.allCases,
+            selected: $quotaMode.mode,
+            label: \.label,
+            accessibilityPrefix: "Codex quota"
+        )
+    }
+
     private var targetDisplaySection: some View {
         VStack(alignment: .leading, spacing: 0) {
             sectionLabel("Target Display")
@@ -731,17 +766,18 @@ struct SettingsView: View {
             guard let updated = usage.lastUpdated else { return L10n.tr("idle") }
             return L10n.tr("synced %@", Self.relativeFormatter.localizedString(for: updated, relativeTo: Date()))
         }()
-        let nums = u.weekly.isUnavailable
-            ? windowCaption(u.fiveHour)
-            : "\(windowCaption(u.fiveHour)) / \(windowCaption(u.weekly))"
+        let captions = u.displayWindows(mode: quotaMode.mode)
+            .map { windowCaption($0.window, defaultLabelKey: $0.defaultLabelKey) }
+            .filter { !$0.isEmpty }
+        let nums = captions.joined(separator: " / ")
         return "\(synced) · \(nums)"
     }
 
-    private func windowCaption(_ w: WindowUsage) -> String {
+    private func windowCaption(_ w: WindowUsage, defaultLabelKey: String) -> String {
         if w.isUnavailable { return "" }
         if let err = w.error, w.percentInt == 0 { return "⚠ \(err)" }
         let pct = "\(w.displayedPercentInt(mode: usageDisplay.mode))%"
-        let label = L10n.tr(w.displayLabel(defaultKey: ""))
+        let label = L10n.tr(w.displayLabel(defaultKey: defaultLabelKey))
         return label.isEmpty ? pct : "\(label) \(pct)"
     }
 }

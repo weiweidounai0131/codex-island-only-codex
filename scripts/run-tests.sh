@@ -29,6 +29,8 @@ swiftc \
   -parse-as-library \
   -sdk "$SDKROOT" \
   -o "$OUT_DIR/resolve-usage-tests" \
+  Sources/Model/PreferenceStorage.swift \
+  Sources/Model/CodexQuotaModeStore.swift \
   Sources/Model/UsageDisplayModeStore.swift \
   Sources/Usage/AppUsage.swift \
   Sources/Usage/ClaudeCredentials.swift \

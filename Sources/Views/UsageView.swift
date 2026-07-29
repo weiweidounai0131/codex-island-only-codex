@@ -10,12 +10,13 @@ import AppKit
 struct UsageView: View {
     @ObservedObject private var store = UsageStore.shared
     @ObservedObject private var pref = StylePref.shared
+    @ObservedObject private var quotaMode = CodexQuotaModeStore.shared
 
     private var style: ChartStyle { pref.style }
 
     var body: some View {
         ChartsBlock(color: IslandColor.codex, usage: store.codex,
-                    style: style, seed: 3)
+                    style: style, quotaMode: quotaMode.mode, seed: 3)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .padding(.horizontal, 32)
         .padding(.top, 12)
@@ -27,16 +28,16 @@ struct ChartsBlock: View {
     let color: Color
     let usage: AppUsage
     let style: ChartStyle
+    let quotaMode: CodexQuotaMode
     let seed: Int
 
     var body: some View {
         VStack(spacing: 6) {
             HStack(spacing: 18) {
-                ChartTile(style: style, color: color, defaultLabelKey: "5h",
-                          window: usage.fiveHour, seed: seed)
-                if !usage.weekly.isUnavailable {
-                    ChartTile(style: style, color: color, defaultLabelKey: "week",
-                              window: usage.weekly, seed: seed + 1)
+                let windows = usage.displayWindows(mode: quotaMode)
+                ForEach(Array(windows.enumerated()), id: \.offset) { idx, item in
+                    ChartTile(style: style, color: color, defaultLabelKey: item.defaultLabelKey,
+                              window: item.window, seed: seed + idx)
                 }
             }
         }

@@ -467,6 +467,7 @@ private struct PeekPillOverlay: View {
     @ObservedObject private var visibility = ProviderVisibilityStore.shared
     @ObservedObject private var usageStore = UsageStore.shared
     @ObservedObject private var alerts = AlertEngine.shared
+    @ObservedObject private var quotaMode = CodexQuotaModeStore.shared
 
     var body: some View {
         let window = currentWindow
@@ -504,7 +505,7 @@ private struct PeekPillOverlay: View {
     private var currentWindow: WindowUsage {
         switch provider {
         case .claude: return usageStore.claude.fiveHour
-        case .codex:  return usageStore.codex.fiveHour
+        case .codex:  return usageStore.codex.primaryWindow(mode: quotaMode.mode)
         }
     }
 

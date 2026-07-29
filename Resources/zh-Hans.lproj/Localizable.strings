@@ -39,6 +39,7 @@
 "Click to refresh now" = "点击立即刷新";
 "click to cycle" = "点击切换";
 "Codex" = "Codex";
+"Codex quota" = "Codex 额度";
 "CodexIsland panel" = "CodexIsland oc 面板";
 "Compact" = "紧凑";
 "Cost" = "成本";
@@ -140,11 +141,16 @@
 "Command-click to cycle visualization." = "Command 点击可切换可视化。";
 "Hover to peek usage. Click to expand. Command-click to cycle visualization." = "悬停预览用量。点击展开。Command 点击可切换可视化。";
 "How often to refresh." = "刷新频率。";
+"Hourly" = "小时版";
 "Percentages" = "百分比";
 "Remaining" = "剩余";
 "Show usage as used or remaining quota." = "将用量百分比显示为已用或剩余额度。";
 "Usage display" = "用量显示";
 "Used" = "已用";
+"Weekly" = "每周版";
+"Window mode" = "窗口模式";
+"Show only the weekly Codex limit." = "只显示 Codex 每周额度。";
+"Show 5-hour and weekly Codex limits when the API provides both." = "当接口同时提供时，显示 5 小时和每周额度。";
 "Keep the percentage and time remaining visible without hovering." = "无需悬停即可始终查看用量百分比和剩余时间。";
 "Inject test percentages. Visible only when launched with CODEXISLAND_DEBUG=1." = "注入测试百分比。仅在使用 CODEXISLAND_DEBUG=1 启动时显示。";
 "Preview" = "预览";

@@ -22,6 +22,15 @@ struct WindowUsage {
 
     var isUnavailable: Bool { error == "unavailable" }
 
+    var isWeeklyWindow: Bool {
+        (windowSeconds ?? 0) >= 604_800
+    }
+
+    var isHourlyWindow: Bool {
+        guard let seconds = windowSeconds else { return false }
+        return seconds > 0 && seconds < 604_800
+    }
+
     func displayedFraction(mode: UsageDisplayMode) -> Double {
         switch mode {
         case .used:
@@ -61,6 +70,11 @@ struct WindowUsage {
 }
 
 struct AppUsage {
+    struct DisplayWindow {
+        let defaultLabelKey: String
+        let window: WindowUsage
+    }
+
     var fiveHour: WindowUsage
     var weekly: WindowUsage
     /// Provider-reported plan tier — Claude's `subscriptionType` (free/pro/max)
@@ -82,4 +96,47 @@ struct AppUsage {
         fiveHour: WindowUsage(usedPercent: 0.45, resetAt: nil, error: nil),
         weekly: WindowUsage(usedPercent: 0.28, resetAt: nil, error: nil)
     )
+
+    var availableWindows: [WindowUsage] {
+        [fiveHour, weekly].filter { !$0.isUnavailable }
+    }
+
+    var hourlyWindow: WindowUsage? {
+        availableWindows.first(where: \.isHourlyWindow)
+    }
+
+    var weeklyWindow: WindowUsage? {
+        availableWindows.first(where: \.isWeeklyWindow)
+            ?? (weekly.isUnavailable ? nil : weekly)
+            ?? (fiveHour.isUnavailable ? nil : fiveHour)
+    }
+
+    func primaryWindow(mode: CodexQuotaMode) -> WindowUsage {
+        switch mode {
+        case .weekly:
+            return weeklyWindow ?? fiveHour
+        case .hourlyAndWeekly:
+            return hourlyWindow ?? weeklyWindow ?? fiveHour
+        }
+    }
+
+    func displayWindows(mode: CodexQuotaMode) -> [DisplayWindow] {
+        switch mode {
+        case .weekly:
+            guard let weeklyWindow else { return [DisplayWindow(defaultLabelKey: "week", window: fiveHour)] }
+            return [DisplayWindow(defaultLabelKey: "week", window: weeklyWindow)]
+        case .hourlyAndWeekly:
+            var result: [DisplayWindow] = []
+            if let hourlyWindow {
+                result.append(DisplayWindow(defaultLabelKey: "5h", window: hourlyWindow))
+            }
+            if let weeklyWindow, result.contains(where: { $0.window.resetAt == weeklyWindow.resetAt && $0.window.windowSeconds == weeklyWindow.windowSeconds }) == false {
+                result.append(DisplayWindow(defaultLabelKey: "week", window: weeklyWindow))
+            }
+            if result.isEmpty {
+                result.append(DisplayWindow(defaultLabelKey: "5h", window: fiveHour))
+            }
+            return result
+        }
+    }
 }

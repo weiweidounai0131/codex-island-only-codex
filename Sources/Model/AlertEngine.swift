@@ -111,7 +111,7 @@ final class AlertEngine: ObservableObject {
             AlertDecision.WindowInput(
                 provider: .codex,
                 visible: true,
-                window: usage.codex.fiveHour
+                window: usage.codex.primaryWindow(mode: CodexQuotaModeStore.shared.mode)
             ),
         ]
 

@@ -97,8 +97,38 @@ struct ResolveUsageTests {
             expect(codex.fiveHour.windowSeconds == 604_800, "T3 Codex window length parses")
             expect(codex.fiveHour.displayLabel(defaultKey: "5h") == "week", "T3 weekly primary window is labelled week")
             expect(codex.weekly.isUnavailable, "T3 missing secondary window is unavailable, not no data")
+            expect(codex.displayWindows(mode: .weekly).count == 1, "T3 weekly mode shows one window")
+            expect(codex.displayWindows(mode: .hourlyAndWeekly).count == 1, "T3 hourly mode falls back to weekly when 5h is absent")
         } else {
             expect(false, "T3 Codex payload parses")
+        }
+
+        // T4 — When Codex restores separate 5-hour and weekly windows, the
+        // manual mode switch must be able to show either both windows or the
+        // weekly one only.
+        let splitCodexPayload: [String: Any] = [
+            "plan_type": "plus",
+            "rate_limit": [
+                "primary_window": [
+                    "used_percent": 17,
+                    "limit_window_seconds": 18_000,
+                    "reset_at": 1_784_000_000
+                ],
+                "secondary_window": [
+                    "used_percent": 42,
+                    "limit_window_seconds": 604_800,
+                    "reset_at": 1_784_507_726
+                ]
+            ]
+        ]
+        if let codex = UsageFetcher.parseCodexUsagePayload(splitCodexPayload) {
+            let hourly = codex.displayWindows(mode: .hourlyAndWeekly)
+            let weekly = codex.displayWindows(mode: .weekly)
+            expect(hourly.count == 2, "T4 hourly mode shows 5h and weekly windows")
+            expect(hourly.first?.window.percentInt == 17, "T4 hourly mode starts with 5h window")
+            expect(weekly.count == 1 && weekly.first?.window.percentInt == 42, "T4 weekly mode shows weekly window only")
+        } else {
+            expect(false, "T4 split Codex payload parses")
         }
 
         if failures > 0 {
