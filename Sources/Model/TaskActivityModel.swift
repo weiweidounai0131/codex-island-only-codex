@@ -32,6 +32,7 @@ struct CodexTaskActivityState: Equatable {
     private var activeTaskBySession: [String: String] = [:]
     private var externalActiveSessionIDs: Set<String> = []
     private var suppressedExternalSessionIDs: Set<String> = []
+    private var terminalSessionIDs: Set<String> = []
     private var fallbackSequence = 0
 
     // A Codex session occupies one visible in-progress slot even when it
@@ -51,12 +52,19 @@ struct CodexTaskActivityState: Equatable {
 
         switch event.kind {
         case .userPromptSubmit:
+            let wasActive = activeTaskBySession[sessionID] != nil
+                || externalActiveSessionIDs.contains(sessionID)
+            let wasTerminal = terminalSessionIDs.contains(sessionID)
             suppressedExternalSessionIDs.remove(sessionID)
-            // Once every session in a batch has ended, the next prompt starts
-            // a fresh x/y group instead of carrying yesterday's completions.
-            if activeTaskBySession.isEmpty, completedCount > 0 {
-                completedCount = 0
-                completedTaskIDs.removeAll()
+            terminalSessionIDs.remove(sessionID)
+            externalActiveSessionIDs.remove(sessionID)
+            // Once every session in a batch has ended, the first new prompt
+            // starts a fresh x/y group instead of carrying yesterday's
+            // completions. A new session also starts a fresh group while
+            // another session is still active; a later turn in a terminal
+            // session keeps the current batch.
+            if !wasActive, !wasTerminal {
+                beginTaskIfNeeded()
             }
             let taskID = taskID(for: event, sessionID: sessionID)
             // Hooks can deliver one event per turn. Keep one active entry per
@@ -66,38 +74,88 @@ struct CodexTaskActivityState: Equatable {
         case .turnActivity:
             // Recover a turn when CodexIsland starts after the prompt was
             // submitted, or when a newer Codex build skips that first event.
+            guard !terminalSessionIDs.contains(sessionID) else { return }
             suppressedExternalSessionIDs.remove(sessionID)
             guard activeTaskBySession[sessionID] == nil else { return }
-            if activeTaskBySession.isEmpty, completedCount > 0 {
-                completedCount = 0
-                completedTaskIDs.removeAll()
+            let wasExternallyActive = externalActiveSessionIDs.remove(sessionID) != nil
+            if !wasExternallyActive {
+                beginTaskIfNeeded()
             }
             let taskID = taskID(for: event, sessionID: sessionID)
             activeTaskBySession[sessionID] = taskID
 
         case .stop:
-            // Stop is scoped to the session. Using the currently mapped task
-            // also handles a turn_id mismatch or a missing turn_id safely.
-            let taskID = activeTaskBySession.removeValue(forKey: sessionID)
-            externalActiveSessionIDs.remove(sessionID)
-            suppressedExternalSessionIDs.insert(sessionID)
-            guard let taskID else { return }
-            if completedTaskIDs.insert(taskID).inserted {
-                completedCount += 1
-            }
+            completeTask(sessionID: sessionID)
 
         case .sessionEnd:
-            // A session can end because it was closed or cancelled. Only a
-            // Stop event counts as a completed task in the reminder.
-            activeTaskBySession.removeValue(forKey: sessionID)
-            externalActiveSessionIDs.remove(sessionID)
-            suppressedExternalSessionIDs.insert(sessionID)
+            // Some Codex versions deliver SessionEnd without Stop. Treat the
+            // first terminal event as completion; duplicate terminal events
+            // stay harmless because the task mapping is removed below.
+            completeTask(sessionID: sessionID)
         }
     }
 
-    mutating func reconcileExternalSessions(_ sessionIDs: Set<String>) {
-        externalActiveSessionIDs = sessionIDs.subtracting(suppressedExternalSessionIDs)
+    mutating func reconcileExternalSessions(
+        _ sessionIDs: Set<String>,
+        completedSessionIDs: Set<String> = []
+    ) {
+        // The session bridge observes Codex's task_complete event directly.
+        // Complete sessions before replacing the external active set so an
+        // externally recovered task can still be counted exactly once.
+        for sessionID in completedSessionIDs {
+            completeTask(sessionID: sessionID)
+        }
+
+        let previouslyActiveExternalSessions = externalActiveSessionIDs
+        let newExternalSessions = sessionIDs
+            .subtracting(previouslyActiveExternalSessions)
+            .subtracting(terminalSessionIDs)
+            .subtracting(Set(activeTaskBySession.keys))
+
+        // Codex can reuse one session file for several conversations/turns.
+        // Seeing it active again is the authoritative signal that the old
+        // terminal suppression no longer applies.
+        for sessionID in sessionIDs {
+            terminalSessionIDs.remove(sessionID)
+            suppressedExternalSessionIDs.remove(sessionID)
+        }
+
+        let candidates = sessionIDs
+            .subtracting(suppressedExternalSessionIDs)
+            .subtracting(terminalSessionIDs)
+        // A completed count belongs to the idle batch. The first active
+        // external task after that batch starts the next one even when other
+        // sessions are already active.
+        if completedCount > 0, !newExternalSessions.isEmpty {
+            resetCompletedBatch()
+        }
+        externalActiveSessionIDs = candidates
         suppressedExternalSessionIDs.formIntersection(sessionIDs)
+    }
+
+    private mutating func beginTaskIfNeeded() {
+        guard completedCount > 0 else { return }
+        resetCompletedBatch()
+    }
+
+    private mutating func resetCompletedBatch() {
+        completedCount = 0
+        completedTaskIDs.removeAll()
+    }
+
+    private mutating func completeTask(sessionID: String) {
+        // Stop is scoped to the session. Use the mapped turn when available;
+        // an externally recovered session has no turn id, so its session id
+        // is the stable de-duplication key instead.
+        let mappedTaskID = activeTaskBySession.removeValue(forKey: sessionID)
+        let hadExternalTask = externalActiveSessionIDs.remove(sessionID) != nil
+        terminalSessionIDs.insert(sessionID)
+        suppressedExternalSessionIDs.insert(sessionID)
+
+        guard let taskID = mappedTaskID ?? (hadExternalTask ? sessionID : nil) else { return }
+        if completedTaskIDs.insert(taskID).inserted {
+            completedCount += 1
+        }
     }
 
     private mutating func taskID(

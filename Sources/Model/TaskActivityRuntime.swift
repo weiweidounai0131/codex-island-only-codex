@@ -15,9 +15,15 @@ final class CodexTaskActivityStore: ObservableObject {
         state.apply(event)
     }
 
-    func reconcileExternalSessions(_ sessionIDs: Set<String>) {
+    func reconcileExternalSessions(
+        _ sessionIDs: Set<String>,
+        completedSessionIDs: Set<String> = []
+    ) {
         var nextState = state
-        nextState.reconcileExternalSessions(sessionIDs)
+        nextState.reconcileExternalSessions(
+            sessionIDs,
+            completedSessionIDs: completedSessionIDs
+        )
         guard nextState != state else { return }
         state = nextState
     }
@@ -96,9 +102,9 @@ private final class CodexSessionActivityBridge {
     private let fileManager = FileManager.default
     private let queue = DispatchQueue(label: "com.weiweidounai0131.CodexIslandOC.session-activity")
     private var source: DispatchSourceTimer?
-    private var lastSessionIDs: Set<String> = []
+    private var lastActiveSessionIDs: Set<String> = []
 
-    var onSessionsChange: ((Set<String>) -> Void)?
+    var onSessionsChange: ((Set<String>, Set<String>) -> Void)?
 
     init(directoryURL: URL? = nil) {
         self.directoryURL = directoryURL
@@ -131,12 +137,13 @@ private final class CodexSessionActivityBridge {
 
     private func scan() {
         var sessionIDs: Set<String> = []
+        var completedSessionIDs: Set<String> = []
         guard let enumerator = fileManager.enumerator(
             at: directoryURL,
             includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles]
         ) else {
-            publishIfChanged(sessionIDs)
+            publishIfChanged(sessionIDs, completedSessionIDs: completedSessionIDs)
             return
         }
 
@@ -149,22 +156,34 @@ private final class CodexSessionActivityBridge {
                   ),
                   values.isRegularFile == true,
                   let modifiedAt = values.contentModificationDate,
-                  Date().timeIntervalSince(modifiedAt) <= Self.maxAge,
-                  !isTerminal(url) else {
+                  Date().timeIntervalSince(modifiedAt) <= Self.maxAge else {
+                continue
+            }
+
+            if isTerminal(url) {
+                // Only count a terminal file when this bridge previously saw
+                // the same session as active. This prevents old completed
+                // sessions from becoming false completions after app launch.
+                if lastActiveSessionIDs.contains(sessionID) {
+                    completedSessionIDs.insert(sessionID)
+                }
                 continue
             }
             sessionIDs.insert(sessionID)
         }
 
-        publishIfChanged(sessionIDs)
+        publishIfChanged(sessionIDs, completedSessionIDs: completedSessionIDs)
     }
 
-    private func publishIfChanged(_ sessionIDs: Set<String>) {
-        guard sessionIDs != lastSessionIDs else { return }
-        lastSessionIDs = sessionIDs
+    private func publishIfChanged(
+        _ sessionIDs: Set<String>,
+        completedSessionIDs: Set<String>
+    ) {
+        guard sessionIDs != lastActiveSessionIDs || !completedSessionIDs.isEmpty else { return }
+        lastActiveSessionIDs = sessionIDs
         let callback = onSessionsChange
         DispatchQueue.main.async {
-            callback?(sessionIDs)
+            callback?(sessionIDs, completedSessionIDs)
         }
     }
 
@@ -304,9 +323,12 @@ final class CodexTaskActivityRuntime {
                 CodexTaskActivityStore.shared.receive(event)
             }
         }
-        sessionBridge.onSessionsChange = { sessionIDs in
+        sessionBridge.onSessionsChange = { sessionIDs, completedSessionIDs in
             Task { @MainActor in
-                CodexTaskActivityStore.shared.reconcileExternalSessions(sessionIDs)
+                CodexTaskActivityStore.shared.reconcileExternalSessions(
+                    sessionIDs,
+                    completedSessionIDs: completedSessionIDs
+                )
             }
         }
     }

@@ -511,7 +511,7 @@ struct RollingNumber: View {
             outgoingOffset = entersFromTop ? rollHeight : -rollHeight
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.34) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.42) {
             guard animationToken == token else { return }
             isRolling = false
             outgoingValue = nil
