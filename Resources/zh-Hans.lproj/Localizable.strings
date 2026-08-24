@@ -41,6 +41,7 @@
 "Codex" = "Codex";
 "Codex quota" = "Codex 额度";
 "CodexIsland panel" = "CodexIsland oc 面板";
+"Codex tasks: %d completed, %d in progress" = "Codex 任务：已完成 %d 个，进行中 %d 个";
 "Compact" = "紧凑";
 "Cost" = "成本";
 "Cost view" = "成本视图";

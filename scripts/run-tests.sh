@@ -28,6 +28,15 @@ fi
 swiftc \
   -parse-as-library \
   -sdk "$SDKROOT" \
+  -o "$OUT_DIR/task-activity-tests" \
+  Sources/Model/TaskActivityModel.swift \
+  Tests/TaskActivityTests.swift
+
+"$OUT_DIR/task-activity-tests"
+
+swiftc \
+  -parse-as-library \
+  -sdk "$SDKROOT" \
   -o "$OUT_DIR/resolve-usage-tests" \
   Sources/Model/PreferenceStorage.swift \
   Sources/Model/CodexQuotaModeStore.swift \

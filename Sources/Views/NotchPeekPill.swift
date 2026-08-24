@@ -59,9 +59,15 @@ struct NotchPeekPill: View {
     }
 
     private var percentLabel: some View {
-        Text(percentText)
-            .font(Typography.bodyNumber)
-            .foregroundStyle(effectiveTint)
+        HStack(spacing: 0) {
+            RollingNumber(
+                value: usage.displayedPercentInt(mode: usageDisplay.mode),
+                color: effectiveTint
+            )
+            Text("%")
+                .font(Typography.bodyNumber)
+                .foregroundStyle(effectiveTint)
+        }
     }
 
     private var separator: some View {
@@ -107,10 +113,6 @@ struct NotchPeekPill: View {
         // the 5h window-length fallback instead of collapsing to "—%".
         guard let err = usage.error, err != "no data", err != "unavailable" else { return false }
         return usage.usedPercent == 0
-    }
-
-    private var percentText: String {
-        "\(usage.displayedPercentInt(mode: usageDisplay.mode))%"
     }
 
     /// `Nh` when ≥ 1h remaining, `Nm` under 1h. Returns nil if there's no

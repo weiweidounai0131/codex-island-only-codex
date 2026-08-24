@@ -4,6 +4,7 @@ import AppKit
 struct IslandRootView: View {
     @ObservedObject var model: IslandModel
     @ObservedObject private var alwaysShow = AlwaysShowUsageStore.shared
+    @ObservedObject private var taskActivity = CodexTaskActivityStore.shared
     @State private var hovering = false
     @State private var contentVisible = false
     @State private var pillsVisible = false
@@ -75,8 +76,18 @@ struct IslandRootView: View {
                         provider: .codex,
                         edge: .leading,
                         edgePadding: logoEdgePadding,
-                        topPadding: max(0, (model.notch.height - 20) / 2)
+                        topPadding: max(0, (model.notch.height - 20) / 2),
+                        isWorking: taskActivity.state.inProgressCount > 0
                     )
+                }
+                .overlay(alignment: .topLeading) {
+                    if taskActivity.state.isVisible {
+                        TaskProgressOverlay(state: taskActivity.state)
+                            .padding(.leading, taskProgressLeadingPadding)
+                            .padding(.top, max(0, (model.notch.height - 14) / 2))
+                            .opacity(model.state == .expanded && !contentVisible ? 0 : 1)
+                            .animation(.strongEaseOut, value: contentVisible)
+                    }
                 }
                 .overlay(alignment: .topTrailing) {
                     if model.state != .compact {
@@ -325,6 +336,12 @@ struct IslandRootView: View {
     private var logoEdgePadding: CGFloat {
         9
     }
+
+    /// Keep x/y inside the open black area after the 20pt Codex logo and
+    /// before the trailing quota pill.
+    private var taskProgressLeadingPadding: CGFloat {
+        logoEdgePadding + 20 + 20
+    }
 }
 
 /// Silhouette + halo + animated sweep. Bundles every layer whose
@@ -407,6 +424,103 @@ private struct GlowLayer: View {
     }
 }
 
+/// Resident/expanded reminder for Codex conversations. It occupies the open
+/// black area after the logo and leaves the trailing quota pill unchanged.
+private struct TaskProgressOverlay: View {
+    let state: CodexTaskActivityState
+
+    var body: some View {
+        HStack(spacing: 1) {
+            RollingNumber(
+                value: state.completedCount,
+                color: .white.opacity(0.86)
+            )
+            Text(verbatim: "/")
+                .foregroundStyle(.white.opacity(0.42))
+            RollingNumber(
+                value: state.inProgressCount,
+                color: IslandColor.codex
+            )
+        }
+        .font(Typography.bodyNumber)
+        .fixedSize()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            L10n.tr(
+                "Codex tasks: %d completed, %d in progress",
+                state.completedCount,
+                state.inProgressCount
+            )
+        )
+        .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .trailing)))
+    }
+}
+
+/// A single x/y digit group that rolls vertically when its value changes.
+/// Increases enter from above; decreases enter from below.
+struct RollingNumber: View {
+    let value: Int
+    let color: Color
+
+    private let rollHeight: CGFloat = 14
+    @State private var previousValue: Int?
+    @State private var outgoingValue: Int?
+    @State private var incomingOffset: CGFloat = 0
+    @State private var outgoingOffset: CGFloat = 0
+    @State private var isRolling = false
+    @State private var animationToken = UUID()
+
+    var body: some View {
+        ZStack {
+            if isRolling, let outgoingValue {
+                Text(verbatim: "\(outgoingValue)")
+                    .foregroundStyle(color)
+                    .offset(y: outgoingOffset)
+            }
+
+            Text(verbatim: "\(value)")
+                .foregroundStyle(color)
+                .offset(y: isRolling ? incomingOffset : 0)
+        }
+        .font(Typography.bodyNumber)
+        .fixedSize()
+        .frame(minWidth: 7, minHeight: rollHeight, maxHeight: rollHeight)
+        .clipped()
+        .onAppear {
+            previousValue = value
+        }
+        .onChange(of: value) { newValue in
+            let oldValue = previousValue ?? value
+            previousValue = newValue
+            guard oldValue != newValue else { return }
+            startRoll(from: oldValue, to: newValue)
+        }
+    }
+
+    private func startRoll(from oldValue: Int, to newValue: Int) {
+        let entersFromTop = newValue > oldValue
+        let token = UUID()
+        animationToken = token
+        outgoingValue = oldValue
+        isRolling = true
+        incomingOffset = entersFromTop ? -rollHeight : rollHeight
+        outgoingOffset = 0
+
+        withAnimation(.countRoll) {
+            incomingOffset = 0
+            outgoingOffset = entersFromTop ? rollHeight : -rollHeight
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.34) {
+            guard animationToken == token else { return }
+            isRolling = false
+            outgoingValue = nil
+            incomingOffset = 0
+            outgoingOffset = 0
+        }
+    }
+}
+
 /// Per-provider brand logo overlay. Observes only ProviderVisibilityStore
 /// so a UsageStore/CostStore tick doesn't re-render the logo image or
 /// re-evaluate its accessibility label.
@@ -417,6 +531,7 @@ private struct LogoOverlay: View {
     let edge: Edge.Set
     let edgePadding: CGFloat
     let topPadding: CGFloat
+    let isWorking: Bool
 
     @ObservedObject private var visibility = ProviderVisibilityStore.shared
 
@@ -428,19 +543,43 @@ private struct LogoOverlay: View {
         // pairs the chrome fade with the panel layout swap when the user
         // toggles a provider in Settings.
         if let image {
-            Image(nsImage: image)
-                .resizable()
-                .renderingMode(.template)
-                .aspectRatio(contentMode: .fit)
-                .foregroundStyle(color)
-                .frame(width: 20, height: 20)
-                .padding(edge, edgePadding)
-                .padding(.top, topPadding)
-                .opacity(isVisible ? 1 : 0)
-                .animation(.openMorph, value: isVisible)
-                .accessibilityLabel(isVisible ? providerLabel : L10n.tr("%@ (hidden)", providerLabel))
-                .accessibilityHidden(!isVisible)
+            Group {
+                if isWorking {
+                    TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+                        logoImage(image)
+                            .rotationEffect(.degrees(rotation(at: context.date)))
+                    }
+                } else {
+                    logoImage(image)
+                }
+            }
+            .frame(width: 20, height: 20)
+            .padding(edge, edgePadding)
+            .padding(.top, topPadding)
+            .opacity(isVisible ? 1 : 0)
+            .animation(.openMorph, value: isVisible)
+            .accessibilityLabel(
+                isVisible
+                    ? (isWorking ? L10n.tr("%@, working", providerLabel) : providerLabel)
+                    : L10n.tr("%@ (hidden)", providerLabel)
+            )
+            .accessibilityHidden(!isVisible)
         }
+    }
+
+    private func logoImage(_ image: NSImage) -> some View {
+        Image(nsImage: image)
+            .resizable()
+            .renderingMode(.template)
+            .aspectRatio(contentMode: .fit)
+            .foregroundStyle(color)
+    }
+
+    private func rotation(at date: Date) -> Double {
+        let period = 1.2
+        let phase = date.timeIntervalSinceReferenceDate
+            .truncatingRemainder(dividingBy: period)
+        return phase / period * 360
     }
 
     private var isVisible: Bool {

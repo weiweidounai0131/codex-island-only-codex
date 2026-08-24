@@ -10,6 +10,10 @@ extension Animation {
     /// reads better at 220ms (chart style change, etc).
     static let chartSwap = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.22)
 
+    /// Vertical number roll for the resident task counter. The new value
+    /// enters from one edge while the previous value exits through the other.
+    static let countRoll = Animation.timingCurve(0.18, 0.82, 0.20, 1, duration: 0.30)
+
     /// Horizontal page movement. Tuned between the too-snappy drawer curve
     /// and the slower full ease-in-out pass: responsive start, quiet settle.
     static let pageSwipe = Animation.timingCurve(0.25, 0.82, 0.25, 1, duration: 0.36)

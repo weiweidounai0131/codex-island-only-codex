@@ -16,6 +16,7 @@ CONTENTS="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS/MacOS"
 RES_DIR="$CONTENTS/Resources"
 FRAMEWORKS_DIR="$CONTENTS/Frameworks"
+HELPERS_DIR="$CONTENTS/Helpers"
 
 resolve_sdkroot() {
   if [[ -n "${SDKROOT:-}" && -d "${SDKROOT:-}" ]]; then
@@ -48,14 +49,14 @@ resolve_sdkroot() {
 SDKROOT="$(resolve_sdkroot)"
 
 rm -rf "$BUILD_DIR"
-mkdir -p "$MACOS_DIR" "$RES_DIR" "$FRAMEWORKS_DIR"
+mkdir -p "$MACOS_DIR" "$RES_DIR" "$FRAMEWORKS_DIR" "$HELPERS_DIR"
 
 cp ./Resources/openai_logo.pdf "$RES_DIR/openai_logo.pdf"
 cp ./Resources/codexisland_logo.png "$RES_DIR/codexisland_logo.png"
 cp ./Resources/CodexIsland.icns "$RES_DIR/CodexIsland.icns"
 find ./Resources -maxdepth 1 -type d -name '*.lproj' -exec cp -R {} "$RES_DIR/" \;
 
-SWIFT_SOURCES=$(find Sources -name '*.swift' | sort)
+SWIFT_SOURCES=$(find Sources -name '*.swift' ! -path 'Sources/TaskActivityHook/*' | sort)
 
 # Universal binary, macOS 13 (Ventura) minimum. swiftc can't emit a
 # multi-arch Mach-O directly, so compile each slice and lipo them.
@@ -80,6 +81,30 @@ done
 
 lipo -create "$ARM64_BIN" "$X86_64_BIN" -output "$MACOS_DIR/$APP_NAME"
 rm "$ARM64_BIN" "$X86_64_BIN"
+
+# The Codex hook is a separate executable. Keeping it outside the app source
+# list avoids a second @main entry point while still bundling one universal
+# helper that the app can install into Application Support.
+HELPER_SOURCE="Sources/TaskActivityHook/main.swift"
+HELPER_ARM64="$BUILD_DIR/CodexIslandTaskActivityHook-arm64"
+HELPER_X86_64="$BUILD_DIR/CodexIslandTaskActivityHook-x86_64"
+
+for arch_pair in "arm64:$HELPER_ARM64" "x86_64:$HELPER_X86_64"; do
+  arch="${arch_pair%%:*}"
+  out="${arch_pair##*:}"
+  swiftc \
+    -target "${arch}-apple-macos${DEPLOYMENT_TARGET}" \
+    -O \
+    -parse-as-library \
+    -sdk "$SDKROOT" \
+    -o "$out" \
+    "$HELPER_SOURCE"
+done
+
+lipo -create "$HELPER_ARM64" "$HELPER_X86_64" \
+  -output "$HELPERS_DIR/CodexIslandTaskActivityHook"
+chmod 700 "$HELPERS_DIR/CodexIslandTaskActivityHook"
+rm "$HELPER_ARM64" "$HELPER_X86_64"
 
 cat > "$CONTENTS/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>

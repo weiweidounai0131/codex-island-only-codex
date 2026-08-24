@@ -41,6 +41,7 @@
 "Codex" = "Codex";
 "Codex quota" = "Codex quota";
 "CodexIsland panel" = "CodexIsland oc panel";
+"Codex tasks: %d completed, %d in progress" = "Codex tasks: %d completed, %d in progress";
 "Compact" = "Compact";
 "Cost" = "Cost";
 "Cost view" = "Cost view";
