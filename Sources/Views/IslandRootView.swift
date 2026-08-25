@@ -82,7 +82,10 @@ struct IslandRootView: View {
                 }
                 .overlay(alignment: .topLeading) {
                     if taskActivity.state.isVisible {
-                        TaskProgressOverlay(state: taskActivity.state)
+                        TaskProgressOverlay(
+                            state: taskActivity.state,
+                            useCompactEmptyLabels: model.notch.hasNotch && model.state != .expanded
+                        )
                             .padding(.leading, taskProgressLeadingPadding)
                             .padding(.top, max(0, (model.notch.height - 14) / 2))
                             .opacity(model.state == .expanded && !contentVisible ? 0 : 1)
@@ -338,9 +341,12 @@ struct IslandRootView: View {
     }
 
     /// Keep x/y inside the open black area after the 20pt Codex logo and
-    /// before the trailing quota pill.
+    /// before the trailing quota pill. The empty-state label is wider, so
+    /// give it a smaller but still readable 8pt gap from the logo.
     private var taskProgressLeadingPadding: CGFloat {
-        logoEdgePadding + 20 + 20
+        let isEmpty = taskActivity.state.completedCount == 0
+            && taskActivity.state.inProgressCount == 0
+        return logoEdgePadding + 20 + (isEmpty ? 8 : 20)
     }
 }
 
@@ -428,16 +434,17 @@ private struct GlowLayer: View {
 /// black area after the logo and leaves the trailing quota pill unchanged.
 private struct TaskProgressOverlay: View {
     let state: CodexTaskActivityState
+    let useCompactEmptyLabels: Bool
 
     var body: some View {
         Group {
             if state.completedCount == 0, state.inProgressCount == 0 {
                 HStack(spacing: 1) {
-                    Text(L10n.tr("Completed"))
+                    Text(useCompactEmptyLabels ? "C" : L10n.tr("Completed"))
                         .foregroundStyle(.white.opacity(0.86))
                     Text(verbatim: "/")
                         .foregroundStyle(.white.opacity(0.42))
-                    Text(L10n.tr("In progress"))
+                    Text(useCompactEmptyLabels ? "I" : L10n.tr("In progress"))
                         .foregroundStyle(IslandColor.codex)
                 }
             } else {
@@ -459,6 +466,7 @@ private struct TaskProgressOverlay: View {
         .fixedSize()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
+        .help(L10n.tr("Codex tasks: completed / in progress"))
         .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .trailing)))
     }
 
