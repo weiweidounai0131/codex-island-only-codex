@@ -65,6 +65,10 @@ struct CodexIslandTaskActivityHook {
 
     private static func activityKind(for hookEvent: String) -> String? {
         switch hookEvent {
+        case "SessionStart":
+            // A new Codex conversation can emit SessionStart before the
+            // first prompt. Treat it as the beginning of one visible task.
+            return "UserPromptSubmit"
         case "UserPromptSubmit":
             return "UserPromptSubmit"
         case "Stop":

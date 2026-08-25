@@ -410,7 +410,9 @@ private final class CodexTaskActivityHookInstaller: @unchecked Sendable {
         // UserPromptSubmit starts a visible task. The additional lifecycle
         // hooks recover a turn when CodexIsland starts after the prompt was
         // submitted, or when the updated Codex app skips that first event.
+        // SessionStart covers a new conversation before its first prompt.
         let eventNames = [
+            "SessionStart",
             "UserPromptSubmit",
             "PreToolUse",
             "PermissionRequest",
