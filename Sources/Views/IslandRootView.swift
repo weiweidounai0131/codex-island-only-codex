@@ -430,29 +430,47 @@ private struct TaskProgressOverlay: View {
     let state: CodexTaskActivityState
 
     var body: some View {
-        HStack(spacing: 1) {
-            RollingNumber(
-                value: state.completedCount,
-                color: .white.opacity(0.86)
-            )
-            Text(verbatim: "/")
-                .foregroundStyle(.white.opacity(0.42))
-            RollingNumber(
-                value: state.inProgressCount,
-                color: IslandColor.codex
-            )
+        Group {
+            if state.completedCount == 0, state.inProgressCount == 0 {
+                HStack(spacing: 1) {
+                    Text(L10n.tr("Completed"))
+                        .foregroundStyle(.white.opacity(0.86))
+                    Text(verbatim: "/")
+                        .foregroundStyle(.white.opacity(0.42))
+                    Text(L10n.tr("In progress"))
+                        .foregroundStyle(IslandColor.codex)
+                }
+            } else {
+                HStack(spacing: 1) {
+                    RollingNumber(
+                        value: state.completedCount,
+                        color: .white.opacity(0.86)
+                    )
+                    Text(verbatim: "/")
+                        .foregroundStyle(.white.opacity(0.42))
+                    RollingNumber(
+                        value: state.inProgressCount,
+                        color: IslandColor.codex
+                    )
+                }
+            }
         }
         .font(Typography.bodyNumber)
         .fixedSize()
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(
-            L10n.tr(
-                "Codex tasks: %d completed, %d in progress",
-                state.completedCount,
-                state.inProgressCount
-            )
-        )
+        .accessibilityLabel(accessibilityLabel)
         .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .trailing)))
+    }
+
+    private var accessibilityLabel: String {
+        if state.completedCount == 0, state.inProgressCount == 0 {
+            return L10n.tr("Codex tasks: completed / in progress")
+        }
+        return L10n.tr(
+            "Codex tasks: %d completed, %d in progress",
+            state.completedCount,
+            state.inProgressCount
+        )
     }
 }
 

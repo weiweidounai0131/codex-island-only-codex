@@ -42,9 +42,11 @@
 "Codex quota" = "Codex 额度";
 "CodexIsland panel" = "CodexIsland oc 面板";
 "Codex tasks: %d completed, %d in progress" = "Codex 任务：已完成 %d 个，进行中 %d 个";
+"Codex tasks: completed / in progress" = "Codex 任务：完成 / 进行中";
 "Compact" = "紧凑";
 "Cost" = "成本";
 "Cost view" = "成本视图";
+"Completed" = "完成";
 "Counts everything — input, output, and cache. Mirrors ccusage." = "统计所有 token：输入、输出和缓存；与 ccusage 一致。";
 "Crit" = "危急";
 "Critical" = "危急";
@@ -56,6 +58,7 @@
 "Idle" = "空闲";
 "idle" = "空闲";
 "Input + output" = "输入 + 输出";
+"In progress" = "进行中";
 "Input + output only. Matches Anthropic's claude.ai stats." = "只统计输入 + 输出；与 Anthropic 的 claude.ai 统计一致。";
 "Island width" = "岛宽度";
 "last scan %@" = "上次扫描 %@";

@@ -42,9 +42,11 @@
 "Codex quota" = "Codex quota";
 "CodexIsland panel" = "CodexIsland oc panel";
 "Codex tasks: %d completed, %d in progress" = "Codex tasks: %d completed, %d in progress";
+"Codex tasks: completed / in progress" = "Codex tasks: completed / in progress";
 "Compact" = "Compact";
 "Cost" = "Cost";
 "Cost view" = "Cost view";
+"Completed" = "Completed";
 "Counts everything — input, output, and cache. Mirrors ccusage." = "Counts everything — input, output, and cache. Mirrors ccusage.";
 "Crit" = "Crit";
 "Critical" = "Critical";
@@ -56,6 +58,7 @@
 "Idle" = "Idle";
 "idle" = "idle";
 "Input + output" = "Input + output";
+"In progress" = "In progress";
 "Input + output only. Matches Anthropic's claude.ai stats." = "Input + output only. Matches Anthropic's claude.ai stats.";
 "Island width" = "Island width";
 "last scan %@" = "last scan %@";
