@@ -440,11 +440,11 @@ private struct TaskProgressOverlay: View {
         Group {
             if state.completedCount == 0, state.inProgressCount == 0 {
                 HStack(spacing: 1) {
-                    Text(useCompactEmptyLabels ? "C" : L10n.tr("Completed"))
+                    Text(useCompactEmptyLabels ? "D" : L10n.tr("Completed"))
                         .foregroundStyle(.white.opacity(0.86))
                     Text(verbatim: "/")
                         .foregroundStyle(.white.opacity(0.42))
-                    Text(useCompactEmptyLabels ? "I" : L10n.tr("In progress"))
+                    Text(useCompactEmptyLabels ? "L" : L10n.tr("In progress"))
                         .foregroundStyle(IslandColor.codex)
                 }
             } else {
