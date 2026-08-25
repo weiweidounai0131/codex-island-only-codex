@@ -42,9 +42,13 @@ struct CodexTaskActivityState: Equatable {
             .union(externalActiveSessionIDs)
             .count
     }
-    // Keep the small x/y indicator present at 0/0 so the activity bridge is
-    // visibly available even before the first Codex event arrives.
+    // Keep the small task indicator present at 0/0 so the activity bridge is
+    // explained even before the first Codex event arrives.
     var isVisible: Bool { true }
+
+    mutating func expireCompletedCount() {
+        resetCompletedBatch()
+    }
 
     mutating func apply(_ event: CodexTaskActivityEvent) {
         let sessionID = event.sessionID.trimmingCharacters(in: .whitespacesAndNewlines)

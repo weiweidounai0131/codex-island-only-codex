@@ -109,6 +109,23 @@ struct TaskActivityTests {
         precondition(stickyCompletion.completedCount == 1)
         precondition(stickyCompletion.inProgressCount == 0)
 
+        // The completed count can expire without touching a task that is
+        // still running; an idle 1/0 state therefore returns to 0/0.
+        var expiredCompletion = CodexTaskActivityState()
+        expiredCompletion.apply(.init(kind: .userPromptSubmit, sessionID: "expiring", taskID: "turn-expiring", occurredAt: 0))
+        expiredCompletion.apply(.init(kind: .stop, sessionID: "expiring", taskID: "turn-expiring", occurredAt: 1))
+        expiredCompletion.expireCompletedCount()
+        precondition(expiredCompletion.completedCount == 0)
+        precondition(expiredCompletion.inProgressCount == 0)
+
+        var expiredWithActiveTask = CodexTaskActivityState()
+        expiredWithActiveTask.apply(.init(kind: .userPromptSubmit, sessionID: "done", taskID: "turn-done", occurredAt: 0))
+        expiredWithActiveTask.apply(.init(kind: .userPromptSubmit, sessionID: "live", taskID: "turn-live", occurredAt: 0))
+        expiredWithActiveTask.apply(.init(kind: .stop, sessionID: "done", taskID: "turn-done", occurredAt: 1))
+        expiredWithActiveTask.expireCompletedCount()
+        precondition(expiredWithActiveTask.completedCount == 0)
+        precondition(expiredWithActiveTask.inProgressCount == 1)
+
         // The session-file fallback must turn an active-to-terminal
         // transition into the same completion count as a Hook event.
         var externalCompletion = CodexTaskActivityState()

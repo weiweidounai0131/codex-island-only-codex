@@ -7,18 +7,24 @@ import Darwin
 final class CodexTaskActivityStore: ObservableObject {
     static let shared = CodexTaskActivityStore()
 
+    private static let completedDisplayDurationNanoseconds: UInt64 = 300_000_000_000
+
     @Published private(set) var state = CodexTaskActivityState()
+    private var completionExpiryTask: Task<Void, Never>?
 
     private init() {}
 
     func receive(_ event: CodexTaskActivityEvent) {
+        let previousCompletedCount = state.completedCount
         state.apply(event)
+        updateCompletionExpiry(previousCompletedCount: previousCompletedCount)
     }
 
     func reconcileExternalSessions(
         _ sessionIDs: Set<String>,
         completedSessionIDs: Set<String> = []
     ) {
+        let previousCompletedCount = state.completedCount
         var nextState = state
         nextState.reconcileExternalSessions(
             sessionIDs,
@@ -26,6 +32,37 @@ final class CodexTaskActivityStore: ObservableObject {
         )
         guard nextState != state else { return }
         state = nextState
+        updateCompletionExpiry(previousCompletedCount: previousCompletedCount)
+    }
+
+    private func updateCompletionExpiry(previousCompletedCount: Int) {
+        guard state.completedCount > 0 else {
+            completionExpiryTask?.cancel()
+            completionExpiryTask = nil
+            return
+        }
+
+        guard state.completedCount != previousCompletedCount else { return }
+        completionExpiryTask?.cancel()
+        completionExpiryTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: Self.completedDisplayDurationNanoseconds)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled, let self else { return }
+            self.expireCompletedCount()
+        }
+    }
+
+    private func expireCompletedCount() {
+        guard state.completedCount > 0 else {
+            completionExpiryTask = nil
+            return
+        }
+
+        state.expireCompletedCount()
+        completionExpiryTask = nil
     }
 }
 
