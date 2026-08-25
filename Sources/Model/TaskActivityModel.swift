@@ -54,16 +54,13 @@ struct CodexTaskActivityState: Equatable {
         case .userPromptSubmit:
             let wasActive = activeTaskBySession[sessionID] != nil
                 || externalActiveSessionIDs.contains(sessionID)
-            let wasTerminal = terminalSessionIDs.contains(sessionID)
             suppressedExternalSessionIDs.remove(sessionID)
             terminalSessionIDs.remove(sessionID)
             externalActiveSessionIDs.remove(sessionID)
-            // Once every session in a batch has ended, the first new prompt
-            // starts a fresh x/y group instead of carrying yesterday's
-            // completions. A new session also starts a fresh group while
-            // another session is still active; a later turn in a terminal
-            // session keeps the current batch.
-            if !wasActive, !wasTerminal {
+            // A prompt after a session has ended starts a fresh x/y group.
+            // This also applies while another session is still active, so
+            // 1/1 becomes 0/2 when the finished conversation resumes.
+            if !wasActive {
                 beginTaskIfNeeded()
             }
             let taskID = taskID(for: event, sessionID: sessionID)
@@ -107,6 +104,7 @@ struct CodexTaskActivityState: Equatable {
         }
 
         let previouslyActiveExternalSessions = externalActiveSessionIDs
+        let reactivatedTerminalSessions = sessionIDs.intersection(terminalSessionIDs)
         let newExternalSessions = sessionIDs
             .subtracting(previouslyActiveExternalSessions)
             .subtracting(terminalSessionIDs)
@@ -126,7 +124,8 @@ struct CodexTaskActivityState: Equatable {
         // A completed count belongs to the idle batch. The first active
         // external task after that batch starts the next one even when other
         // sessions are already active.
-        if completedCount > 0, !newExternalSessions.isEmpty {
+        if completedCount > 0,
+           !newExternalSessions.isEmpty || !reactivatedTerminalSessions.isEmpty {
             resetCompletedBatch()
         }
         externalActiveSessionIDs = candidates

@@ -48,15 +48,28 @@ struct TaskActivityTests {
         repeatedSession.apply(.init(kind: .userPromptSubmit, sessionID: "same", taskID: "turn-1", occurredAt: 0))
         repeatedSession.apply(.init(kind: .userPromptSubmit, sessionID: "other", taskID: "turn-other", occurredAt: 0))
         precondition(repeatedSession.inProgressCount == 2)
-        // A second turn in the same conversation must not create a second
-        // visible in-progress task.
+        // Resuming a completed conversation starts a fresh batch, so its
+        // previous completion is cleared even while "other" remains active.
         repeatedSession.apply(.init(kind: .stop, sessionID: "same", taskID: "turn-1", occurredAt: 1))
         repeatedSession.apply(.init(kind: .userPromptSubmit, sessionID: "same", taskID: "turn-2", occurredAt: 2))
-        precondition(repeatedSession.completedCount == 1)
+        precondition(repeatedSession.completedCount == 0)
         precondition(repeatedSession.inProgressCount == 2)
         repeatedSession.apply(.init(kind: .stop, sessionID: "same", taskID: "turn-2", occurredAt: 3))
-        precondition(repeatedSession.completedCount == 2)
+        precondition(repeatedSession.completedCount == 1)
         precondition(repeatedSession.inProgressCount == 1)
+
+        // When one conversation is complete and another remains active,
+        // continuing the completed conversation starts a fresh batch: 1/1
+        // becomes 0/2 immediately.
+        var continuedConversation = CodexTaskActivityState()
+        continuedConversation.apply(.init(kind: .userPromptSubmit, sessionID: "finished", taskID: "turn-finished-1", occurredAt: 0))
+        continuedConversation.apply(.init(kind: .userPromptSubmit, sessionID: "live", taskID: "turn-live", occurredAt: 0))
+        continuedConversation.apply(.init(kind: .stop, sessionID: "finished", taskID: "turn-finished-1", occurredAt: 1))
+        precondition(continuedConversation.completedCount == 1)
+        precondition(continuedConversation.inProgressCount == 1)
+        continuedConversation.apply(.init(kind: .userPromptSubmit, sessionID: "finished", taskID: "turn-finished-2", occurredAt: 2))
+        precondition(continuedConversation.completedCount == 0)
+        precondition(continuedConversation.inProgressCount == 2)
 
         // Repeated prompts in one still-running session remain one slot, and
         // closing that session removes the slot completely.
@@ -118,14 +131,27 @@ struct TaskActivityTests {
         precondition(externalCompletion.completedCount == 1)
         precondition(externalCompletion.inProgressCount == 0)
         // A later task can reuse the same Codex session file. Its active
-        // snapshot restores y without clearing x because it is the same
-        // conversation, not a new session.
+        // snapshot is a new task after completion, so it clears x and
+        // restores y.
         externalCompletion.reconcileExternalSessions(["external"])
-        precondition(externalCompletion.completedCount == 1)
+        precondition(externalCompletion.completedCount == 0)
         precondition(externalCompletion.inProgressCount == 1)
         externalCompletion.reconcileExternalSessions(["external", "next-external"])
         precondition(externalCompletion.completedCount == 0)
         precondition(externalCompletion.inProgressCount == 2)
+
+        // Same behavior when another external conversation is still active.
+        var externalOverlap = CodexTaskActivityState()
+        externalOverlap.reconcileExternalSessions(["finished", "live"])
+        externalOverlap.reconcileExternalSessions(
+            ["live"],
+            completedSessionIDs: ["finished"]
+        )
+        precondition(externalOverlap.completedCount == 1)
+        precondition(externalOverlap.inProgressCount == 1)
+        externalOverlap.reconcileExternalSessions(["finished", "live"])
+        precondition(externalOverlap.completedCount == 0)
+        precondition(externalOverlap.inProgressCount == 2)
 
         // Stop and SessionEnd can arrive in either order, but one task counts
         // only once.
