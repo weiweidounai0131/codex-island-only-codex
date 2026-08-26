@@ -16,8 +16,12 @@ final class CodexTaskActivityStore: ObservableObject {
 
     func receive(_ event: CodexTaskActivityEvent) {
         let previousCompletedCount = state.completedCount
+        let previousInProgressCount = state.inProgressCount
         state.apply(event)
-        updateCompletionExpiry(previousCompletedCount: previousCompletedCount)
+        updateCompletionExpiry(
+            previousCompletedCount: previousCompletedCount,
+            previousInProgressCount: previousInProgressCount
+        )
     }
 
     func reconcileExternalSessions(
@@ -25,6 +29,7 @@ final class CodexTaskActivityStore: ObservableObject {
         completedSessionIDs: Set<String> = []
     ) {
         let previousCompletedCount = state.completedCount
+        let previousInProgressCount = state.inProgressCount
         var nextState = state
         nextState.reconcileExternalSessions(
             sessionIDs,
@@ -32,17 +37,27 @@ final class CodexTaskActivityStore: ObservableObject {
         )
         guard nextState != state else { return }
         state = nextState
-        updateCompletionExpiry(previousCompletedCount: previousCompletedCount)
+        updateCompletionExpiry(
+            previousCompletedCount: previousCompletedCount,
+            previousInProgressCount: previousInProgressCount
+        )
     }
 
-    private func updateCompletionExpiry(previousCompletedCount: Int) {
-        guard state.completedCount > 0 else {
+    private func updateCompletionExpiry(
+        previousCompletedCount: Int,
+        previousInProgressCount: Int
+    ) {
+        // The completion count is a stable summary only after every active
+        // conversation has ended. Do not expire an intermediate 1/1 state;
+        // start the five-minute window when the state becomes fully idle.
+        guard state.completedCount > 0, state.inProgressCount == 0 else {
             completionExpiryTask?.cancel()
             completionExpiryTask = nil
             return
         }
 
-        guard state.completedCount != previousCompletedCount else { return }
+        let enteredIdle = previousInProgressCount > 0 && state.inProgressCount == 0
+        guard state.completedCount != previousCompletedCount || enteredIdle else { return }
         completionExpiryTask?.cancel()
         completionExpiryTask = Task { [weak self] in
             do {
