@@ -641,6 +641,7 @@ private struct PeekPillOverlay: View {
             loading: usageStore.loading,
             tint: tint,
             alignment: provider == .claude ? .leading : .trailing,
+            leadingUsage: weeklyPeekWindow,
             severity: severity
         )
         .padding(provider == .claude ? .leading : .trailing, 14)
@@ -672,6 +673,13 @@ private struct PeekPillOverlay: View {
         case .claude: return usageStore.claude.fiveHour
         case .codex:  return usageStore.codex.primaryWindow(mode: quotaMode.mode)
         }
+    }
+
+    private var weeklyPeekWindow: WindowUsage? {
+        guard provider == .codex, quotaMode.mode == .hourlyAndWeekly else { return nil }
+        let windows = usageStore.codex.displayWindows(mode: .hourlyAndWeekly)
+        guard windows.count > 1 else { return nil }
+        return windows[1].window
     }
 
     private var severity: AlertEngine.Severity {

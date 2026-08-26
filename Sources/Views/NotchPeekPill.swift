@@ -7,6 +7,8 @@ import SwiftUI
 /// Renders one of three states:
 ///   • value:    "32% · 2h"  (active countdown) or "0% · 5h" (window-length
 ///               fallback at lower opacity when no active resetAt is known)
+///               A Codex hourly peek can prepend a weekly percentage as
+///               "83% | 4h · 32%".
 ///   • loading:  small pulsing dot (only when `loading && usedPercent == 0`)
 ///   • errored:  "—%"         (when error is set and we have no value)
 ///
@@ -16,6 +18,7 @@ struct NotchPeekPill: View {
     let loading: Bool
     let tint: Color
     let alignment: HorizontalAlignment
+    let leadingUsage: WindowUsage?
     var severity: AlertEngine.Severity = .none
     @ObservedObject private var usageDisplay = UsageDisplayModeStore.shared
 
@@ -39,6 +42,10 @@ struct NotchPeekPill: View {
                     } else {
                         // Right pill: mirrored so percent stays on the
                         // outside (right) and hours remaining stays inside.
+                        if let leadingUsage {
+                            percentLabel(for: leadingUsage)
+                            weeklyDivider
+                        }
                         resetLabel
                         separator
                         percentLabel
@@ -59,9 +66,13 @@ struct NotchPeekPill: View {
     }
 
     private var percentLabel: some View {
+        percentLabel(for: usage)
+    }
+
+    private func percentLabel(for window: WindowUsage) -> some View {
         HStack(spacing: 0) {
             RollingNumber(
-                value: usage.displayedPercentInt(mode: usageDisplay.mode),
+                value: window.displayedPercentInt(mode: usageDisplay.mode),
                 color: effectiveTint
             )
             Text("%")
@@ -72,6 +83,12 @@ struct NotchPeekPill: View {
 
     private var separator: some View {
         Text("·")
+            .font(Typography.bodyNumber)
+            .foregroundStyle(.white.opacity(0.40))
+    }
+
+    private var weeklyDivider: some View {
+        Text("|")
             .font(Typography.bodyNumber)
             .foregroundStyle(.white.opacity(0.40))
     }

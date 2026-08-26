@@ -20,9 +20,9 @@ final class IslandModel: ObservableObject {
     let tabWidth: CGFloat = 30
 
     /// Per-side outboard slot for the Codex-only status group in peek state.
-    /// Kept symmetric so the island stays visually centered, with enough
-    /// hardware clearance for the readout on real Dynamic Island displays.
-    let pillSlotWidth: CGFloat = 56
+    /// Kept symmetric so the island stays visually centered; the wider slot
+    /// accommodates the hourly peek's weekly percentage prefix.
+    let pillSlotWidth: CGFloat = 76
 
     /// Visible expanded panel width. Codex-only mode uses a single
     /// provider column, so the panel no longer needs the old two-column span.
