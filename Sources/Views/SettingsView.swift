@@ -22,6 +22,9 @@ struct SettingsView: View {
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     @ObservedObject private var usage = UsageStore.shared
     @ObservedObject private var cost = CostStore.shared
+    @ObservedObject private var conversationUsage = CodexConversationUsagePreference.shared
+    @ObservedObject private var conversationUsageStore = CodexConversationUsageStore.shared
+    @ObservedObject private var codexLaunch = CodexLaunchStore.shared
     @AppStorage("Settings.activeTab") private var activeTabRaw: String = SettingsTab.general.rawValue
 
     private var activeTab: SettingsTab {
@@ -214,6 +217,25 @@ struct SettingsView: View {
                 }
             }
             SettingsRow(
+                title: "Conversation usage",
+                subtitle: conversationUsageSubtitle
+            ) {
+                SettingsToggle(isOn: conversationUsage.enabled) {
+                    conversationUsage.enabled.toggle()
+                }
+            }
+            SettingsRow(
+                title: "Codex launch",
+                subtitle: codexLaunch.subtitleKey
+            ) {
+                PillButton(
+                    label: codexLaunch.buttonLabelKey,
+                    isLoading: codexLaunch.isLaunching
+                ) {
+                    codexLaunch.launch()
+                }
+            }
+            SettingsRow(
                 title: "Low Power Mode",
                 subtitle: "Glow only on refresh, hover, or limit alerts."
             ) {
@@ -306,6 +328,28 @@ struct SettingsView: View {
 
     private var isDevMode: Bool {
         AppEnvironment.isDebug
+    }
+
+    private var conversationUsageSubtitle: String {
+        guard conversationUsage.enabled else {
+            return "Show the latest turn cache hit rate inside Codex."
+        }
+        switch conversationUsageStore.status {
+        case .disabled:
+            return "Conversation usage is disabled."
+        case .waitingForCodex:
+            return "Waiting for the official Codex app."
+        case .reading:
+            return "Reading local Codex session usage."
+        case .waitingForRendererMapping:
+            return "Usage found; waiting for a safe current-thread mapping."
+        case .ready:
+            return "Current Codex conversation usage is ready."
+        case .noData:
+            return "No token usage is available for the current Codex session."
+        case .rendererUnavailable:
+            return "Safe Codex connection is unavailable; restart Codex with --remote-debugging-port to show CH."
+        }
     }
 
     /// Resets the engine's crossing memory before injecting so each click

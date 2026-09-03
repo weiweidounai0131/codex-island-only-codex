@@ -16,6 +16,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var island: IslandWindowController?
     private var settingsShortcutMonitor: Any?
     private let taskActivityRuntime = CodexTaskActivityRuntime()
+    private let codexM0Runtime = CodexM0RuntimeController()
+    private let conversationUsageStore = CodexConversationUsageStore.shared
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         PreferenceMigration.importLegacyPreferencesIfNeeded()
@@ -42,6 +44,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UsageStore.shared.startAutoRefresh()
         CostStore.shared.startAutoRefresh()
         taskActivityRuntime.start()
+        conversationUsageStore.start()
+        codexM0Runtime.start()
 
         // Wire the alert engine after the usage store so its initial
         // recompute sees whatever values the first refresh has produced.
@@ -50,6 +54,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        conversationUsageStore.stop()
+        codexM0Runtime.stop()
         taskActivityRuntime.stop()
     }
 

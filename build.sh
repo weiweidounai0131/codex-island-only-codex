@@ -54,6 +54,8 @@ mkdir -p "$MACOS_DIR" "$RES_DIR" "$FRAMEWORKS_DIR" "$HELPERS_DIR"
 cp ./Resources/openai_logo.pdf "$RES_DIR/openai_logo.pdf"
 cp ./Resources/codexisland_logo.png "$RES_DIR/codexisland_logo.png"
 cp ./Resources/CodexIsland.icns "$RES_DIR/CodexIsland.icns"
+cp ./Resources/CodexCacheHUD.js "$RES_DIR/CodexCacheHUD.js"
+cp ./Resources/CodexCacheHUDBridge.js "$RES_DIR/CodexCacheHUDBridge.js"
 find ./Resources -maxdepth 1 -type d -name '*.lproj' -exec cp -R {} "$RES_DIR/" \;
 
 SWIFT_SOURCES=$(find Sources -name '*.swift' ! -path 'Sources/TaskActivityHook/*' | sort)
@@ -74,6 +76,7 @@ for arch_pair in "arm64:$ARM64_BIN" "x86_64:$X86_64_BIN"; do
     -sdk "$SDKROOT" \
     -framework SwiftUI \
     -framework AppKit \
+    -framework Network \
     -framework ServiceManagement \
     -o "$out" \
     $SWIFT_SOURCES

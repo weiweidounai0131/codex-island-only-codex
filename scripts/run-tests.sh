@@ -47,3 +47,55 @@ swiftc \
   Tests/ResolveUsageTests.swift
 
 CLAUDE_CODE_OAUTH_TOKEN="test-stub-token" "$OUT_DIR/resolve-usage-tests"
+
+node --check Resources/CodexCacheHUD.js
+node --check Resources/CodexCacheHUDBridge.js
+node Tests/CodexCacheHUDStaticTests.mjs
+
+swiftc \
+  -parse-as-library \
+  -sdk "$SDKROOT" \
+  -framework Network \
+  -o "$OUT_DIR/codex-inspector-tests" \
+  Sources/Model/CodexInspectorClient.swift \
+  Tests/CodexInspectorTests.swift
+
+"$OUT_DIR/codex-inspector-tests"
+
+swiftc \
+  -parse-as-library \
+  -sdk "$SDKROOT" \
+  -framework AppKit \
+  -framework Network \
+  -o "$OUT_DIR/codex-launch-tests" \
+  Sources/Localization/L10n.swift \
+  Sources/Model/AppLanguageStore.swift \
+  Sources/Model/CodexInspectorClient.swift \
+  Sources/Model/CodexProcessWatcher.swift \
+  Sources/Model/CodexLaunchStore.swift \
+  Tests/CodexLaunchTests.swift
+
+"$OUT_DIR/codex-launch-tests"
+
+swiftc \
+  -parse-as-library \
+  -sdk "$SDKROOT" \
+  -framework AppKit \
+  -o "$OUT_DIR/codex-m0-tests" \
+  Sources/Model/AppEnvironment.swift \
+  Sources/Model/CodexProcessWatcher.swift \
+  Sources/Model/CodexRendererAttacher.swift \
+  Tests/CodexM0Tests.swift
+
+"$OUT_DIR/codex-m0-tests"
+
+swiftc \
+  -parse-as-library \
+  -sdk "$SDKROOT" \
+  -o "$OUT_DIR/codex-cache-hit-tests" \
+  Sources/Cost/LogParseCache.swift \
+  Sources/ConversationUsage/CodexCacheHitSnapshot.swift \
+  Sources/ConversationUsage/CodexCacheHitReader.swift \
+  Tests/CodexCacheHitTests.swift
+
+"$OUT_DIR/codex-cache-hit-tests"

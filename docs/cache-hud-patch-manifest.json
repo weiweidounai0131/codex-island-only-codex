@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "productBundleId": "com.openai.codex",
+  "injectionMarker": "codex-island-cache-hud-v1",
+  "rendererTarget": {
+    "requiredMarkers": [
+      "data-content-search-turn-key"
+    ],
+    "supportingMarkers": [
+      "data-thread-user-message-navigation-content",
+      "local-conversation-thread-turn-entries",
+      "thread-virtualizer"
+    ]
+  },
+  "safety": {
+    "inputMustBeExtractedRendererFile": true,
+    "refuseInstalledOfficialAppPath": true,
+    "outputMustBeExplicit": true
+  }
+}
