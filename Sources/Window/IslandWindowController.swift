@@ -11,7 +11,6 @@ final class IslandWindowController {
     private var globalMouseMonitor: Any?
     private var trackingTimer: Timer?
     private var screenChangeObserver: NSObjectProtocol?
-    private var occlusionObserver: NSObjectProtocol?
     private var sessionResignObserver: NSObjectProtocol?
     private var sessionActiveObserver: NSObjectProtocol?
     private var subs: Set<AnyCancellable> = []
@@ -53,15 +52,11 @@ final class IslandWindowController {
         installMouseTracking()
         observeScreenChanges()
         observeTargetChoice()
-        observeOcclusion()
         observeSessionState()
     }
 
     deinit {
         if let observer = screenChangeObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        if let observer = occlusionObserver {
             NotificationCenter.default.removeObserver(observer)
         }
         if let observer = sessionResignObserver {
@@ -163,30 +158,6 @@ final class IslandWindowController {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in self?.repositionForCurrentScreen() }
-        }
-    }
-
-    /// Pauses the LoadingSweep when the user can't see the island —
-    /// fullscreen apps on a separate Space, the screen going to sleep,
-    /// or anything else macOS reports as making the window invisible.
-    /// The 30Hz TimelineView is the dominant idle-CPU cost; pausing it
-    /// while occluded drops idle to ~0%.
-    private func observeOcclusion() {
-        // Seed the initial state — the notification doesn't fire on launch.
-        WindowOcclusionStore.shared.update(
-            isVisible: window.occlusionState.contains(.visible)
-        )
-        occlusionObserver = NotificationCenter.default.addObserver(
-            forName: NSWindow.didChangeOcclusionStateNotification,
-            object: window,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                WindowOcclusionStore.shared.update(
-                    isVisible: self.window.occlusionState.contains(.visible)
-                )
-            }
         }
     }
 

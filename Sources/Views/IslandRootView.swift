@@ -350,7 +350,7 @@ struct IslandRootView: View {
     }
 }
 
-/// Silhouette + halo + animated sweep. Bundles every layer whose
+/// Silhouette + halo. Bundles every layer whose
 /// appearance depends on alert severity or the Low Power Mode event
 /// predicate, so a UsageStore/AlertEngine/CostStore emission only
 /// invalidates this child's body — not the root view's overlays,
@@ -364,17 +364,8 @@ private struct GlowLayer: View {
     @ObservedObject private var costStore = CostStore.shared
     @ObservedObject private var lowPower = LowPowerModeStore.shared
     @ObservedObject private var alerts = AlertEngine.shared
-    @ObservedObject private var occlusion = WindowOcclusionStore.shared
-
     var body: some View {
         ZStack {
-            LoadingSweep(
-                active: !occlusion.isOccluded
-                    && (lowPower.effectiveEnabled ? glowEventActive : true),
-                tint: glowColor,
-                shape: shape
-            )
-
             shape
                 .fill(.black)
                 .overlay {
@@ -405,10 +396,10 @@ private struct GlowLayer: View {
         }
     }
 
-    /// Under Low Power Mode the halo + sweep are gated on this predicate:
-    /// the user sees glow only when something is happening (a fetch is in
-    /// flight, the cursor is hovering, or an alert is active). Off-LPM it's
-    /// ignored — both surfaces run continuously.
+    /// Under Low Power Mode the halo is gated on this predicate: the user
+    /// sees an event glow only while something is happening (a fetch is in
+    /// flight, the cursor is hovering, or an alert is active). Off-LPM the
+    /// ambient halo remains visible.
     private var glowEventActive: Bool {
         hovering
             || usageStore.loading
@@ -721,56 +712,5 @@ private struct PeekPillOverlay: View {
         return mode == .used
             ? L10n.tr("%@: %d percent of 5-hour window used, %@", provider, pct, resetPhrase)
             : L10n.tr("%@: %d percent of 5-hour window remaining, %@", provider, pct, resetPhrase)
-    }
-}
-
-/// Cobalt angular-gradient sweep that orbits the silhouette while data is
-/// fetching. Owns its own TimelineView so the parent (IslandRootView) doesn't
-/// re-render every overlay alongside the sweep — that was competing with the
-/// hover spring for main-thread budget.
-///
-/// Tick rate is 30Hz (was 120Hz). 3.6s/revolution at 30Hz = 12° per frame,
-/// indistinguishable from 120Hz to the eye for a slow continuous orbit but
-/// 4× cheaper on the main thread. The bigger CPU saving comes from gating
-/// `active` on `!isWindowOccluded` upstream — when a fullscreen app or
-/// another window covers the menu bar entirely, the sweep stops rendering
-/// (the user can't see it anyway), dropping idle CPU to ~0%.
-///
-/// Earlier attempts to push rotation into Core Animation (CAGradientLayer or
-/// `.rotationEffect` over a static gradient) all subtly changed the glow
-/// feel — SwiftUI's per-frame conic re-shading produces an alive,
-/// atmospheric look that a rotated static texture loses. This is the
-/// minimum-cost approach that preserves the exact original render.
-private struct LoadingSweep: View {
-    let active: Bool
-    /// Color of the orbiting trail. Cobalt by default; switches to amber
-    /// or red while the alert engine reports a tracked window above its
-    /// warning/critical threshold so the entire glow shares one hue.
-    let tint: Color
-    let shape: IslandShape
-
-    var body: some View {
-        if active {
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
-                let t = context.date.timeIntervalSinceReferenceDate
-                let rotation = (t * 100).truncatingRemainder(dividingBy: 360)
-                shape
-                    .stroke(
-                        AngularGradient(
-                            gradient: Gradient(stops: [
-                                .init(color: .clear, location: 0.00),
-                                .init(color: tint.opacity(0.0), location: 0.55),
-                                .init(color: tint, location: 0.78),
-                                .init(color: .white.opacity(0.95), location: 0.92),
-                                .init(color: tint.opacity(0.0), location: 1.00),
-                            ]),
-                            center: .center,
-                            angle: .degrees(rotation)
-                        ),
-                        lineWidth: 4
-                    )
-                    .blur(radius: 3)
-            }
-        }
     }
 }

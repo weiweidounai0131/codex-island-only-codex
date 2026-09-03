@@ -150,11 +150,19 @@ private final class CodexSessionActivityBridge {
     private static let maxAge: TimeInterval = 15 * 60
     private static let tailBytes = 128 * 1024
 
+    private struct FileSnapshot {
+        let path: String
+        let modifiedAt: Date
+        let fileSize: UInt64
+        let isTerminal: Bool
+    }
+
     private let directoryURL: URL
     private let fileManager = FileManager.default
     private let queue = DispatchQueue(label: "com.weiweidounai0131.CodexIslandOC.session-activity")
     private var source: DispatchSourceTimer?
     private var lastActiveSessionIDs: Set<String> = []
+    private var fileSnapshots: [String: FileSnapshot] = [:]
 
     var onSessionsChange: ((Set<String>, Set<String>) -> Void)?
 
@@ -172,7 +180,7 @@ private final class CodexSessionActivityBridge {
         let source = DispatchSource.makeTimerSource(queue: queue)
         source.schedule(
             deadline: .now() + 1,
-            repeating: .seconds(1),
+            repeating: .seconds(2),
             leeway: .milliseconds(250)
         )
         source.setEventHandler { [weak self] in
@@ -190,9 +198,14 @@ private final class CodexSessionActivityBridge {
     private func scan() {
         var sessionIDs: Set<String> = []
         var completedSessionIDs: Set<String> = []
+        var seenSessionIDs: Set<String> = []
         guard let enumerator = fileManager.enumerator(
             at: directoryURL,
-            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
+            includingPropertiesForKeys: [
+                .isRegularFileKey,
+                .contentModificationDateKey,
+                .fileSizeKey
+            ],
             options: [.skipsHiddenFiles]
         ) else {
             publishIfChanged(sessionIDs, completedSessionIDs: completedSessionIDs)
@@ -204,7 +217,11 @@ private final class CodexSessionActivityBridge {
                   url.lastPathComponent.hasPrefix("rollout-"),
                   let sessionID = sessionID(from: url),
                   let values = try? url.resourceValues(
-                      forKeys: [.isRegularFileKey, .contentModificationDateKey]
+                      forKeys: [
+                          .isRegularFileKey,
+                          .contentModificationDateKey,
+                          .fileSizeKey
+                      ]
                   ),
                   values.isRegularFile == true,
                   let modifiedAt = values.contentModificationDate,
@@ -212,7 +229,25 @@ private final class CodexSessionActivityBridge {
                 continue
             }
 
-            if isTerminal(url) {
+            seenSessionIDs.insert(sessionID)
+            let fileSize = UInt64(max(0, values.fileSize ?? 0))
+            let terminal: Bool
+            if let snapshot = fileSnapshots[sessionID],
+               snapshot.path == url.path,
+               snapshot.modifiedAt == modifiedAt,
+               snapshot.fileSize == fileSize {
+                terminal = snapshot.isTerminal
+            } else {
+                terminal = isTerminal(url)
+                fileSnapshots[sessionID] = FileSnapshot(
+                    path: url.path,
+                    modifiedAt: modifiedAt,
+                    fileSize: fileSize,
+                    isTerminal: terminal
+                )
+            }
+
+            if terminal {
                 // Only count a terminal file when this bridge previously saw
                 // the same session as active. This prevents old completed
                 // sessions from becoming false completions after app launch.
@@ -224,6 +259,7 @@ private final class CodexSessionActivityBridge {
             sessionIDs.insert(sessionID)
         }
 
+        fileSnapshots = fileSnapshots.filter { seenSessionIDs.contains($0.key) }
         publishIfChanged(sessionIDs, completedSessionIDs: completedSessionIDs)
     }
 
