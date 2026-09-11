@@ -24,12 +24,14 @@
 "Always show usage" = "Always show usage";
 "Conversation usage" = "Conversation usage";
 "Codex launch" = "Codex launch";
-"Use the official Codex executable with --remote-debugging-port=43123." = "To show conversation usage, click the button on the right to restart Codex.";
-"Launching the official Codex app with the local Renderer endpoint." = "Restarting Codex to show conversation usage. Please wait.";
-"Official Codex is running with the local Renderer endpoint." = "Conversation usage is ready. View it in a Codex conversation.";
+"Use the official Codex executable with --remote-debugging-port=43123." = "To show conversation usage, click the button on the right to open Codex.";
+"Launching the official Codex app with the local Renderer endpoint." = "Preparing Codex to show conversation usage. Please wait.";
+"Official Codex is running with the local Renderer endpoint." = "Codex is open. Click the button on the right to restart it with conversation usage.";
 "The official Codex app could not be found." = "The official Codex app could not be found.";
 "Launch Codex" = "Launch Codex";
 "Open Codex" = "Open Codex";
+"Restart Codex?" = "Restart Codex?";
+"Codex will close and reopen so conversation usage can be displayed. Unsaved work may be interrupted." = "Codex will close and reopen so conversation usage can be displayed. Unsaved work may be interrupted.";
 "Launching…" = "Launching…";
 "Codex is already running without the CH endpoint." = "Codex is already running. Restart it to enable conversation usage.";
 "To enable conversation usage, CodexIsland needs to relaunch the official Codex app. Unsaved work may be interrupted." = "CodexIsland needs to restart the official Codex app to enable conversation usage. Unsaved work may be interrupted.";

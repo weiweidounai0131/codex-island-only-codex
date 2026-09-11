@@ -23,6 +23,14 @@ struct CodexLaunchTests {
             CodexInspectorDiscovery.rendererPort(in: "ChatGPT \(arguments.joined(separator: " "))\n") == 43123,
             "the launch argument is discoverable from ps output"
         )
+        expect(
+            CodexLaunchStore.buttonLabelKey(for: .ready) == "Restart Codex",
+            "a ready Codex exposes a restart action"
+        )
+        expect(
+            CodexLaunchStore.buttonLabelKey(for: .idle) == "Open Codex",
+            "an idle Codex exposes a launch action"
+        )
 
         if failures > 0 {
             print("\(failures) failure(s)")

@@ -28,6 +28,12 @@ final class CodexLaunchStore: ObservableObject {
 
     @Published private(set) var state: CodexLaunchState = .idle
 
+    private init() {
+        if runningOfficialApplication() != nil {
+            state = .ready
+        }
+    }
+
     var subtitleKey: String {
         switch state {
         case .idle:
@@ -42,13 +48,17 @@ final class CodexLaunchStore: ObservableObject {
     }
 
     var buttonLabelKey: String {
+        Self.buttonLabelKey(for: state)
+    }
+
+    static func buttonLabelKey(for state: CodexLaunchState) -> String {
         switch state {
         case .launching:
             return "Launching…"
         case .idle, .failed:
-            return "Launch Codex"
-        case .ready:
             return "Open Codex"
+        case .ready:
+            return "Restart Codex"
         }
     }
 
@@ -65,15 +75,8 @@ final class CodexLaunchStore: ObservableObject {
         }
 
         if let running = runningOfficialApplication() {
-            if let commandLine = commandLine(for: running.processIdentifier),
-               CodexInspectorDiscovery.rendererPort(in: commandLine) != nil {
-                running.activate(options: [.activateAllWindows])
-                state = .ready
-                return
-            }
-
             guard confirmRelaunch() else {
-                state = .idle
+                state = .ready
                 return
             }
             state = .launching
@@ -125,9 +128,9 @@ final class CodexLaunchStore: ObservableObject {
 
     private func confirmRelaunch() -> Bool {
         let alert = NSAlert()
-        alert.messageText = L10n.tr("Codex is already running without the CH endpoint.")
+        alert.messageText = L10n.tr("Restart Codex?")
         alert.informativeText = L10n.tr(
-            "To enable conversation usage, CodexIsland needs to relaunch the official Codex app. Unsaved work may be interrupted."
+            "Codex will close and reopen so conversation usage can be displayed. Unsaved work may be interrupted."
         )
         alert.addButton(withTitle: L10n.tr("Restart Codex"))
         alert.addButton(withTitle: L10n.tr("Cancel"))
