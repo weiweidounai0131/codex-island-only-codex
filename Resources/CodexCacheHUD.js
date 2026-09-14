@@ -47,8 +47,11 @@
   let observer = null;
   let applyScheduled = false;
   let applying = false;
+  let retryTimer = null;
+  let retryGeneration = 0;
   let boundThreadId = null;
   const snapshots = new Map();
+  const controlsByComposer = new WeakMap();
 
   function isElement(value) {
     return value instanceof Element;
@@ -391,7 +394,15 @@
     popover.id = popoverID;
     trigger.setAttribute("aria-controls", popoverID);
 
-    const control = { root, trigger, popover, label, closeTimer: null };
+    const control = {
+      root,
+      trigger,
+      popover,
+      label,
+      closeTimer: null,
+      composer: null,
+      anchor: null,
+    };
     const cancelClose = () => {
       if (control.closeTimer === null) return;
       window.clearTimeout(control.closeTimer);
@@ -427,13 +438,18 @@
 
   function removeHUD(root) {
     if (!isElement(root)) return;
+    const control = root._codexIslandControl;
+    if (control?.composer) controlsByComposer.delete(control.composer);
     const popoverID = root.querySelector("button")?.getAttribute("aria-controls");
     if (popoverID) document.getElementById(popoverID)?.remove();
     root.remove();
   }
 
   function existingHUD(composer) {
-    return [...composer.querySelectorAll(`[${ROOT_ATTRIBUTE}="true"]`)][0] ?? null;
+    const control = controlsByComposer.get(composer);
+    if (control?.root?.isConnected) return control.root;
+    if (control) controlsByComposer.delete(composer);
+    return null;
   }
 
   function renderComposer(composer) {
@@ -454,6 +470,9 @@
     const messages = messagesForLocale(locale);
     const control = current?._codexIslandControl ?? createHUD();
     control.root._codexIslandControl = control;
+    control.composer = composer;
+    control.anchor = anchor;
+    controlsByComposer.set(composer, control);
     control.root.dataset.codexIslandThreadId = snapshot.threadId;
     control.root.dataset.codexIslandTurnId = snapshot.turnId;
     control.popover.setAttribute("aria-label", messages.details);
@@ -480,9 +499,15 @@
       control.renderKey = renderKey;
     }
     control.root.style.display = "inline-flex";
-    if (control.root.parentElement !== anchor.parentElement || control.root.nextElementSibling !== anchor) {
-      anchor.parentElement.insertBefore(control.root, anchor);
+    control.root.style.position = "fixed";
+    control.root.style.zIndex = "2147483646";
+    if (control.root.parentElement !== document.body) {
+      document.body.append(control.root);
     }
+    const anchorRect = anchor.getBoundingClientRect();
+    const rootWidth = control.root.getBoundingClientRect().width;
+    control.root.style.left = `${Math.max(0, anchorRect.left - rootWidth - 4)}px`;
+    control.root.style.top = `${Math.max(0, anchorRect.top + (anchorRect.height - 28) / 2)}px`;
   }
 
   function removeAllHUDs() {
@@ -500,13 +525,42 @@
     const composers = composerRoots();
     for (const composer of composers) renderComposer(composer);
     for (const root of [...document.querySelectorAll(`[${ROOT_ATTRIBUTE}="true"]`)]) {
-      if (!root.isConnected || !root.closest('textarea, [contenteditable="true"], [role="textbox"], form, [data-codex-composer-root], [data-codex-composer]')) {
+      const control = root._codexIslandControl;
+      if (!root.isConnected || !control?.composer?.isConnected || !control.anchor?.isConnected) {
         removeHUD(root);
       }
     }
     } finally {
       applying = false;
     }
+  }
+
+  // Codex can mount the footer controls a moment after the composer root.
+  // Retry only after a snapshot arrives, then stop; this avoids a resident
+  // polling loop while still recovering from that one-time layout race.
+  function scheduleSnapshotRetry() {
+    retryGeneration += 1;
+    const generation = retryGeneration;
+    if (retryTimer !== null) window.clearTimeout(retryTimer);
+    const delays = [350, 1200, 3000];
+    let index = 0;
+    const run = () => {
+      retryTimer = null;
+      if (
+        generation !== retryGeneration ||
+        !started ||
+        !enabled ||
+        snapshots.size === 0
+      ) {
+        return;
+      }
+      apply();
+      if (index >= delays.length) return;
+      retryTimer = window.setTimeout(run, delays[index]);
+      index += 1;
+    };
+    retryTimer = window.setTimeout(run, delays[index]);
+    index += 1;
   }
 
   function scheduleApply() {
@@ -573,6 +627,8 @@
         childList: true,
         subtree: true,
       });
+      window.addEventListener("resize", scheduleApply);
+      document.addEventListener("scroll", scheduleApply, true);
     }
     return api;
   }
@@ -580,6 +636,11 @@
   function dispose() {
     observer?.disconnect();
     observer = null;
+    window.removeEventListener("resize", scheduleApply);
+    document.removeEventListener("scroll", scheduleApply, true);
+    retryGeneration += 1;
+    if (retryTimer !== null) window.clearTimeout(retryTimer);
+    retryTimer = null;
     started = false;
     applyScheduled = false;
     removeAllHUDs();
@@ -590,7 +651,12 @@
   function setEnabled(value) {
     enabled = value === true;
     if (enabled) start();
-    else apply();
+    else {
+      retryGeneration += 1;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+      retryTimer = null;
+      apply();
+    }
     return enabled;
   }
 
@@ -599,6 +665,7 @@
     if (!snapshot) return false;
     snapshots.set(snapshot.threadId, snapshot);
     scheduleApply();
+    scheduleSnapshotRetry();
     return true;
   }
 

@@ -22,6 +22,8 @@ final class CodexRendererLiveBridge {
     private var didProjectInitialSnapshot = false
     private var blockedForProcess = false
     private var generation = 0
+    private var retryTask: Task<Void, Never>?
+    private var retryAttempt = 0
 
     private(set) var state: CodexRendererLiveBridgeState = .idle
     var onVisibleThreadID: ((String?) -> Void)?
@@ -45,9 +47,11 @@ final class CodexRendererLiveBridge {
         }
 
         cancelOperation()
+        cancelRetry()
         self.processIdentifier = processIdentifier
         didProjectInitialSnapshot = false
         blockedForProcess = false
+        retryAttempt = 0
         transition(to: .attaching(processIdentifier: processIdentifier))
         launch(snapshot: latestSnapshot)
     }
@@ -59,12 +63,14 @@ final class CodexRendererLiveBridge {
         guard let processIdentifier, !blockedForProcess else { return }
         switch state {
         case .attached:
-            // The main-world bridge receives subsequent token updates from
-            // Codex directly. Reinstalling it for every JSONL poll would
-            // create duplicate subscriptions and increase renderer risk.
-            guard !didProjectInitialSnapshot, snapshot != nil else { return }
-            launch(snapshot: snapshot)
+            guard let snapshot else { return }
+            if didProjectInitialSnapshot {
+                project(snapshot: snapshot)
+            } else {
+                launch(snapshot: snapshot)
+            }
         case .unavailable:
+            cancelRetry()
             transition(to: .attaching(processIdentifier: processIdentifier))
             launch(snapshot: snapshot)
         case .idle, .attaching:
@@ -82,10 +88,12 @@ final class CodexRendererLiveBridge {
         let cleanupBridgeSource = bridgeSource
 
         cancelOperation()
+        cancelRetry()
         processIdentifier = nil
         latestSnapshot = nil
         didProjectInitialSnapshot = false
         blockedForProcess = false
+        retryAttempt = 0
         transition(to: .idle)
 
         guard shouldDisable,
@@ -153,6 +161,38 @@ final class CodexRendererLiveBridge {
         }
     }
 
+    private func project(snapshot: CodexCacheHitSnapshot) {
+        guard operation == nil,
+              let processIdentifier,
+              let snapshotJSON = Self.snapshotJSON(snapshot) else {
+            return
+        }
+
+        let currentGeneration = generation
+        operation = Task { [weak self] in
+            do {
+                let visibleThreadID = try await CodexRendererInspectorAttachment.projectSnapshot(
+                    processIdentifier: processIdentifier,
+                    snapshotJSON: snapshotJSON
+                )
+                guard !Task.isCancelled else { return }
+                self?.finishProjection(
+                    generation: currentGeneration,
+                    processIdentifier: processIdentifier,
+                    visibleThreadID: visibleThreadID,
+                    projectedSnapshot: snapshot
+                )
+            } catch {
+                guard !Task.isCancelled else { return }
+                self?.fail(
+                    generation: currentGeneration,
+                    processIdentifier: processIdentifier,
+                    error: error
+                )
+            }
+        }
+    }
+
     private func finish(
         generation: Int,
         processIdentifier: Int32,
@@ -164,6 +204,8 @@ final class CodexRendererLiveBridge {
             return
         }
         operation = nil
+        cancelRetry()
+        retryAttempt = 0
         if projectedSnapshot != nil {
             didProjectInitialSnapshot = true
         }
@@ -175,6 +217,30 @@ final class CodexRendererLiveBridge {
            latestSnapshot != projectedSnapshot,
            !didProjectInitialSnapshot {
             launch(snapshot: latestSnapshot)
+        }
+    }
+
+    private func finishProjection(
+        generation: Int,
+        processIdentifier: Int32,
+        visibleThreadID: String?,
+        projectedSnapshot: CodexCacheHitSnapshot
+    ) {
+        guard generation == self.generation,
+              self.processIdentifier == processIdentifier else {
+            return
+        }
+        operation = nil
+        cancelRetry()
+        retryAttempt = 0
+        transition(to: .attached(processIdentifier: processIdentifier))
+        if let visibleThreadID {
+            onVisibleThreadID?(visibleThreadID)
+        }
+
+        if let latestSnapshot,
+           latestSnapshot != projectedSnapshot {
+            project(snapshot: latestSnapshot)
         }
     }
 
@@ -201,12 +267,51 @@ final class CodexRendererLiveBridge {
                 reason: error.localizedDescription
             )
         )
+        scheduleRetry()
     }
 
     private func cancelOperation() {
         generation += 1
         operation?.cancel()
         operation = nil
+    }
+
+    private func cancelRetry() {
+        retryTask?.cancel()
+        retryTask = nil
+    }
+
+    private func scheduleRetry() {
+        guard retryTask == nil,
+              !blockedForProcess,
+              let processIdentifier else {
+            return
+        }
+
+        let delays: [UInt64] = [1_000_000_000, 3_000_000_000, 8_000_000_000]
+        let delay = delays[min(retryAttempt, delays.count - 1)]
+        retryAttempt = min(retryAttempt + 1, delays.count - 1)
+        let currentGeneration = generation
+        retryTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: delay)
+            } catch {
+                return
+            }
+            guard let self,
+                  !Task.isCancelled,
+                  self.generation == currentGeneration,
+                  self.processIdentifier == processIdentifier,
+                  !self.blockedForProcess else {
+                return
+            }
+            if case .attached = self.state {
+                return
+            }
+            self.retryTask = nil
+            self.transition(to: .attaching(processIdentifier: processIdentifier))
+            self.launch(snapshot: self.latestSnapshot)
+        }
     }
 
     private func transition(to nextState: CodexRendererLiveBridgeState) {

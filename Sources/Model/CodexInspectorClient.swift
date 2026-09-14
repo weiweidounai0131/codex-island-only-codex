@@ -380,6 +380,20 @@ final class CodexInspectorClient: @unchecked Sendable {
 }
 
 enum CodexInspectorDiscovery {
+    private static let rendererProbeExpression = """
+    (() => {
+      const roots = document.querySelectorAll('[data-codex-composer-root], [data-codex-composer]');
+      return { composerCount: roots.length };
+    })()
+    """
+
+    private struct RendererPageCandidate {
+        let rawURL: String
+        let endpoint: CodexInspectorEndpoint
+        let score: Int
+        let index: Int
+    }
+
     /// Parse the only endpoint this app is allowed to use. A normal
     /// LaunchServices-launched Codex has no endpoint and must remain untouched.
     static func rendererPort(in commandLine: String) -> UInt16? {
@@ -401,6 +415,54 @@ enum CodexInspectorDiscovery {
         return nil
     }
 
+    /// Select the main Codex renderer and exclude auxiliary app routes such as
+    /// the avatar overlay and detached windows. The official app now exposes
+    /// several `app://` pages, so page order is not a stable signal.
+    static func rendererPageScore(url: String) -> Int? {
+        guard let parsedURL = URL(string: url),
+              parsedURL.scheme == "app",
+              parsedURL.path == "/index.html" else {
+            return nil
+        }
+        if parsedURL.query?.contains("initialRoute=") == true {
+            return nil
+        }
+        return parsedURL.query == nil ? 100 : 80
+    }
+
+    static func rendererPageURLs(in values: [[String: Any]]) -> [String] {
+        rendererPageCandidates(in: values).map { $0.rawURL }
+    }
+
+    private static func rendererPageCandidates(
+        in values: [[String: Any]]
+    ) -> [RendererPageCandidate] {
+        values.enumerated().compactMap { index, value in
+            guard value["type"] as? String == "page",
+                  let rawURL = value["url"] as? String,
+                  let score = rendererPageScore(url: rawURL),
+                  let rawWebSocketURL = value["webSocketDebuggerUrl"] as? String,
+                  let webSocketURL = URL(string: rawWebSocketURL),
+                  webSocketURL.scheme == "ws",
+                  ["127.0.0.1", "localhost", "::1", "[::1]"]
+                    .contains(webSocketURL.host ?? "") else {
+                return nil
+            }
+            return RendererPageCandidate(
+                rawURL: rawURL,
+                endpoint: CodexInspectorEndpoint(webSocketURL: webSocketURL),
+                score: score,
+                index: index
+            )
+        }
+        .sorted {
+            if $0.score != $1.score {
+                return $0.score > $1.score
+            }
+            return $0.index < $1.index
+        }
+    }
+
     private static func commandLine(for processIdentifier: Int32) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/ps")
@@ -419,7 +481,9 @@ enum CodexInspectorDiscovery {
         ) ?? ""
     }
 
-    static func discover(for processIdentifier: Int32) async throws -> CodexInspectorEndpoint {
+    private static func discoverCandidates(
+        for processIdentifier: Int32
+    ) async throws -> [CodexInspectorEndpoint] {
         let commandLine = try commandLine(for: processIdentifier)
         let port = rendererPort(in: commandLine)
         guard let port else {
@@ -433,19 +497,44 @@ enum CodexInspectorDiscovery {
             throw CodexInspectorError.endpointUnavailable
         }
 
-        for value in values where value["type"] as? String == "page" {
-            if (value["url"] as? String)?.hasPrefix("app://") != true {
-                continue
-            }
-            guard let rawURL = value["webSocketDebuggerUrl"] as? String,
-                  let webSocketURL = URL(string: rawURL),
-                  webSocketURL.scheme == "ws",
-                  ["127.0.0.1", "localhost", "::1", "[::1]"].contains(webSocketURL.host ?? "") else {
-                continue
-            }
-            return CodexInspectorEndpoint(webSocketURL: webSocketURL)
+        let candidates = rendererPageCandidates(in: values)
+            .map { $0.endpoint }
+        guard !candidates.isEmpty else {
+            throw CodexInspectorError.endpointUnavailable
         }
-        throw CodexInspectorError.endpointUnavailable
+        return candidates
+    }
+
+    static func discover(for processIdentifier: Int32) async throws -> CodexInspectorEndpoint {
+        guard let endpoint = try await discoverCandidates(for: processIdentifier).first else {
+            throw CodexInspectorError.endpointUnavailable
+        }
+        return endpoint
+    }
+
+    private static func connect(
+        to endpoint: CodexInspectorEndpoint
+    ) async throws -> CodexInspectorClient {
+        let client = try CodexInspectorClient(endpoint: endpoint)
+        do {
+            try await client.waitUntilConnected()
+            let location = try await client.evaluate(
+                "String(location.protocol) + String(location.host)"
+            )
+            guard let location = location as? String,
+                  location.hasPrefix("app:") else {
+                throw CodexInspectorError.rendererUnavailable
+            }
+            let probe = try await client.evaluate(rendererProbeExpression) as? [String: Any]
+            let composerCount = (probe?["composerCount"] as? NSNumber)?.intValue ?? 0
+            guard composerCount > 0 else {
+                throw CodexInspectorError.rendererUnavailable
+            }
+            return client
+        } catch {
+            client.close()
+            throw error
+        }
     }
 
     static func connect(
@@ -457,21 +546,13 @@ enum CodexInspectorDiscovery {
 
         while Date() < deadline {
             do {
-                let endpoint = try await discover(for: processIdentifier)
-                let client = try CodexInspectorClient(endpoint: endpoint)
-                do {
-                    try await client.waitUntilConnected()
-                    let location = try await client.evaluate(
-                        "String(location.protocol) + String(location.host)"
-                    )
-                    guard let location = location as? String,
-                          location.hasPrefix("app:") else {
-                        throw CodexInspectorError.rendererUnavailable
+                let endpoints = try await discoverCandidates(for: processIdentifier)
+                for endpoint in endpoints {
+                    do {
+                        return try await connect(to: endpoint)
+                    } catch {
+                        lastError = error
                     }
-                    return client
-                } catch {
-                    client.close()
-                    throw error
                 }
             } catch let error as CodexInspectorError {
                 if case .noExplicitRendererEndpoint = error {
@@ -512,10 +593,9 @@ enum CodexRendererInspectorAttachment {
     ) async throws -> String? {
         let escapedHUD = try jsonString(hudSource)
         let escapedBridge = try jsonString(bridgeSource)
-        let escapedSnapshot = snapshotJSON.flatMap { try? jsonString($0) }
         let bootstrap = rendererBootstrap(
             enabled: enabled,
-            snapshotJSON: escapedSnapshot
+            snapshotJSON: snapshotJSON
         )
         let escapedBootstrap = try jsonString(bootstrap)
         let bridgeActivation = try jsonString(
@@ -532,6 +612,18 @@ enum CodexRendererInspectorAttachment {
         })()
         """
         _ = try await client.evaluate(expression)
+        if snapshotJSON != nil {
+            // The composer can finish mounting its native footer after the
+            // initial bootstrap. Re-project only the snapshot on this same
+            // approved page connection once the footer has settled.
+            try await Task.sleep(nanoseconds: 500_000_000)
+            _ = try await client.evaluate(
+                rendererBootstrap(
+                    enabled: enabled,
+                    snapshotJSON: snapshotJSON
+                )
+            )
+        }
         return try await client.evaluate(visibleThreadExpression) as? String
     }
 
@@ -553,11 +645,40 @@ enum CodexRendererInspectorAttachment {
         )
     }
 
+    static func projectSnapshot(
+        processIdentifier: Int32,
+        snapshotJSON: String
+    ) async throws -> String? {
+        let client = try await CodexInspectorDiscovery.connect(to: processIdentifier)
+        defer { client.close() }
+        let expression = """
+        (() => {
+          const api = window.__codexIslandCacheHUDV1;
+          if (!api) throw new Error('Cache HUD API unavailable');
+          const accepted = api.setSnapshot(\(snapshotJSON));
+          const roots = [...document.querySelectorAll('[data-codex-composer-root], [data-codex-composer]')];
+          const visible = roots.filter((element) => element.getClientRects().length > 0);
+          const composer = visible[0] ?? roots[0] ?? null;
+          const ids = composer ? [...new Set(
+            [...composer.querySelectorAll('[data-above-composer-conversation-id]')]
+              .map((element) => element.getAttribute('data-above-composer-conversation-id'))
+              .filter((value) => typeof value === 'string' && value.length > 0),
+          )] : [];
+          return { accepted, visibleThreadID: ids.length === 1 ? ids[0] : null };
+        })()
+        """
+        guard let result = try await client.evaluate(expression) as? [String: Any],
+              (result["accepted"] as? Bool) == true else {
+            throw CodexInspectorError.rendererUnavailable
+        }
+        return result["visibleThreadID"] as? String
+    }
+
     private static func rendererBootstrap(
         enabled: Bool,
         snapshotJSON: String?
     ) -> String {
-        let snapshot = snapshotJSON.map { "api.setSnapshot(\($0));" } ?? ""
+        let snapshot = snapshotBootstrapStatement(snapshotJSON) ?? ""
         return """
         (() => {
           const api = window.__codexIslandCacheHUDV1;
@@ -567,6 +688,11 @@ enum CodexRendererInspectorAttachment {
           return api.inspect();
         })()
         """
+    }
+
+    static func snapshotBootstrapStatement(_ snapshotJSON: String?) -> String? {
+        guard let snapshotJSON else { return nil }
+        return "api.setSnapshot(\(snapshotJSON));"
     }
 
     private static func jsonString(_ value: String) throws -> String {

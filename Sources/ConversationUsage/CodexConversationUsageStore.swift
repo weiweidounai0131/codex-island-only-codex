@@ -89,6 +89,10 @@ final class CodexConversationUsageStore: ObservableObject {
     func bindVisibleSession(_ sessionID: String?) {
         visibleSessionID = sessionID
         updateVisibleSnapshot()
+        // The renderer mapping can arrive after the local JSONL poll. Push
+        // the already-read snapshot again so the HUD is not left empty until
+        // the next token notification.
+        rendererBridge.update(snapshot: visibleSnapshot)
     }
 
     func refresh() {
