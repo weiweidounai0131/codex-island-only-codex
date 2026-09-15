@@ -674,6 +674,12 @@ enum CodexRendererInspectorAttachment {
         return result["visibleThreadID"] as? String
     }
 
+    static func visibleThreadID(processIdentifier: Int32) async throws -> String? {
+        let client = try await CodexInspectorDiscovery.connect(to: processIdentifier)
+        defer { client.close() }
+        return try await client.evaluate(visibleThreadExpression) as? String
+    }
+
     private static func rendererBootstrap(
         enabled: Bool,
         snapshotJSON: String?

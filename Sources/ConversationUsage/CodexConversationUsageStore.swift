@@ -186,6 +186,7 @@ final class CodexConversationUsageStore: ObservableObject {
             .mapValues { $0.sorted { $0.timestamp > $1.timestamp } }
         updateVisibleSnapshot()
         rendererBridge.update(snapshot: visibleSnapshot)
+        rendererBridge.refreshVisibleThread()
 
         if rendererUnavailable {
             status = .rendererUnavailable

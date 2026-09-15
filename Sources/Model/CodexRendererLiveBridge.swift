@@ -24,6 +24,8 @@ final class CodexRendererLiveBridge {
     private var generation = 0
     private var retryTask: Task<Void, Never>?
     private var retryAttempt = 0
+    private var visibleThreadOperation: Task<Void, Never>?
+    private var lastVisibleThreadRefresh = Date.distantPast
 
     private(set) var state: CodexRendererLiveBridgeState = .idle
     var onVisibleThreadID: ((String?) -> Void)?
@@ -52,6 +54,7 @@ final class CodexRendererLiveBridge {
         didProjectInitialSnapshot = false
         blockedForProcess = false
         retryAttempt = 0
+        lastVisibleThreadRefresh = .distantPast
         transition(to: .attaching(processIdentifier: processIdentifier))
         launch(snapshot: latestSnapshot)
     }
@@ -78,6 +81,42 @@ final class CodexRendererLiveBridge {
         }
     }
 
+    /// Reconcile the visible Codex conversation independently from token
+    /// changes. Switching tasks does not necessarily emit a token event, and
+    /// the renderer notification manager is absent in some Codex releases.
+    func refreshVisibleThread() {
+        guard visibleThreadOperation == nil,
+              let processIdentifier,
+              !blockedForProcess,
+              Date().timeIntervalSince(lastVisibleThreadRefresh) >= 2.5 else {
+            return
+        }
+        guard case .attached = state else { return }
+
+        lastVisibleThreadRefresh = Date()
+        let currentGeneration = generation
+        visibleThreadOperation = Task { [weak self] in
+            do {
+                let visibleThreadID = try await CodexRendererInspectorAttachment.visibleThreadID(
+                    processIdentifier: processIdentifier
+                )
+                guard !Task.isCancelled else { return }
+                self?.finishVisibleThread(
+                    generation: currentGeneration,
+                    processIdentifier: processIdentifier,
+                    visibleThreadID: visibleThreadID
+                )
+            } catch {
+                guard !Task.isCancelled else { return }
+                self?.fail(
+                    generation: currentGeneration,
+                    processIdentifier: processIdentifier,
+                    error: error
+                )
+            }
+        }
+    }
+
     func stop() {
         let cleanupProcessIdentifier = processIdentifier
         let shouldDisable = {
@@ -89,11 +128,14 @@ final class CodexRendererLiveBridge {
 
         cancelOperation()
         cancelRetry()
+        visibleThreadOperation?.cancel()
+        visibleThreadOperation = nil
         processIdentifier = nil
         latestSnapshot = nil
         didProjectInitialSnapshot = false
         blockedForProcess = false
         retryAttempt = 0
+        lastVisibleThreadRefresh = .distantPast
         transition(to: .idle)
 
         guard shouldDisable,
@@ -244,6 +286,21 @@ final class CodexRendererLiveBridge {
         }
     }
 
+    private func finishVisibleThread(
+        generation: Int,
+        processIdentifier: Int32,
+        visibleThreadID: String?
+    ) {
+        guard generation == self.generation,
+              self.processIdentifier == processIdentifier else {
+            return
+        }
+        visibleThreadOperation = nil
+        if let visibleThreadID {
+            onVisibleThreadID?(visibleThreadID)
+        }
+    }
+
     private func fail(
         generation: Int,
         processIdentifier: Int32,
@@ -254,6 +311,8 @@ final class CodexRendererLiveBridge {
             return
         }
         operation = nil
+        visibleThreadOperation?.cancel()
+        visibleThreadOperation = nil
         if let inspectorError = error as? CodexInspectorError,
            case .noExplicitRendererEndpoint = inspectorError {
             // A process without an explicit endpoint will not gain one
@@ -274,6 +333,8 @@ final class CodexRendererLiveBridge {
         generation += 1
         operation?.cancel()
         operation = nil
+        visibleThreadOperation?.cancel()
+        visibleThreadOperation = nil
     }
 
     private func cancelRetry() {
