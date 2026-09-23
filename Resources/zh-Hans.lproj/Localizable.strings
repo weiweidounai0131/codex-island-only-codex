@@ -160,6 +160,7 @@
 "%@ (hidden)" = "%@（已隐藏）";
 "%@: %d percent of 5-hour window remaining" = "%@：5 小时窗口剩余 %d%%";
 "%@: %d percent of 5-hour window remaining, %@" = "%@：5 小时窗口剩余 %d%%，%@";
+"Credits balance: %@" = "积分余额：%@";
 "%@: %d percent of 5-hour window used" = "%@：已使用 5 小时窗口的 %d%%";
 "%@: %d percent of 5-hour window used, %@" = "%@：已使用 5 小时窗口的 %d%%，%@";
 "%@: no data for 5-hour window" = "%@：5 小时窗口暂无数据";

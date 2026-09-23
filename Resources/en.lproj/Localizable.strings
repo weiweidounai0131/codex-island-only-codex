@@ -160,6 +160,7 @@
 "%@ (hidden)" = "%@ (hidden)";
 "%@: %d percent of 5-hour window remaining" = "%@: %d percent of 5-hour window remaining";
 "%@: %d percent of 5-hour window remaining, %@" = "%@: %d percent of 5-hour window remaining, %@";
+"Credits balance: %@" = "Credits balance: %@";
 "%@: %d percent of 5-hour window used" = "%@: %d percent of 5-hour window used";
 "%@: %d percent of 5-hour window used, %@" = "%@: %d percent of 5-hour window used, %@";
 "%@: no data for 5-hour window" = "%@: no data for 5-hour window";

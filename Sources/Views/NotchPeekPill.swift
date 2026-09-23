@@ -19,6 +19,7 @@ struct NotchPeekPill: View {
     let tint: Color
     let alignment: HorizontalAlignment
     let leadingUsage: WindowUsage?
+    var creditsBalance: Int? = nil
     var severity: AlertEngine.Severity = .none
     @ObservedObject private var usageDisplay = UsageDisplayModeStore.shared
 
@@ -39,6 +40,10 @@ struct NotchPeekPill: View {
                         percentLabel
                         separator
                         resetLabel
+                    } else if let creditsBalance {
+                        resetLabel
+                        weeklyDivider
+                        creditsBalanceLabel(creditsBalance)
                     } else {
                         // Right pill: mirrored so percent stays on the
                         // outside (right) and hours remaining stays inside.
@@ -67,6 +72,10 @@ struct NotchPeekPill: View {
 
     private var percentLabel: some View {
         percentLabel(for: usage)
+    }
+
+    private func creditsBalanceLabel(_ balance: Int) -> some View {
+        RollingNumber(value: balance, color: tint)
     }
 
     private func percentLabel(for window: WindowUsage) -> some View {

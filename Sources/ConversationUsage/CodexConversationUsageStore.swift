@@ -30,6 +30,7 @@ final class CodexConversationUsageStore: ObservableObject {
     private let processWatcher: CodexProcessWatching
     private let rendererBridge: CodexRendererLiveBridge
     private var preferenceCancellable: AnyCancellable?
+    private var usageCancellable: AnyCancellable?
     private var pollTimer: Timer?
     private var started = false
     private var refreshGeneration = 0
@@ -63,6 +64,9 @@ final class CodexConversationUsageStore: ObservableObject {
                 self?.applyPreference(enabled)
             }
         }
+        usageCancellable = UsageStore.shared.$codex.sink { [weak self] _ in
+            Task { @MainActor [weak self] in self?.updateRendererSnapshot() }
+        }
         applyPreference(preference.enabled)
     }
 
@@ -71,6 +75,8 @@ final class CodexConversationUsageStore: ObservableObject {
         started = false
         preferenceCancellable?.cancel()
         preferenceCancellable = nil
+        usageCancellable?.cancel()
+        usageCancellable = nil
         stopPolling()
         processWatcher.onStateChange = nil
         processWatcher.stop()
@@ -92,7 +98,7 @@ final class CodexConversationUsageStore: ObservableObject {
         // The renderer mapping can arrive after the local JSONL poll. Push
         // the already-read snapshot again so the HUD is not left empty until
         // the next token notification.
-        rendererBridge.update(snapshot: visibleSnapshot)
+        updateRendererSnapshot()
     }
 
     func refresh() {
@@ -185,7 +191,7 @@ final class CodexConversationUsageStore: ObservableObject {
         snapshotsBySessionID = Dictionary(grouping: snapshots, by: \.sessionID)
             .mapValues { $0.sorted { $0.timestamp > $1.timestamp } }
         updateVisibleSnapshot()
-        rendererBridge.update(snapshot: visibleSnapshot)
+        updateRendererSnapshot()
         rendererBridge.refreshVisibleThread()
 
         if rendererUnavailable {
@@ -205,6 +211,13 @@ final class CodexConversationUsageStore: ObservableObject {
             return
         }
         visibleSnapshot = snapshotsBySessionID[visibleSessionID]?.first
+    }
+
+    private func updateRendererSnapshot() {
+        rendererBridge.update(
+            snapshot: visibleSnapshot,
+            creditsBalance: UsageStore.shared.codex.creditsBalance
+        )
     }
 
     private func handleRendererState(_ state: CodexRendererLiveBridgeState) {

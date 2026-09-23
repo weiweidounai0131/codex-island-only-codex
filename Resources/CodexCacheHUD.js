@@ -15,10 +15,10 @@
     context: "Context",
     latestCacheHit: "Latest cache hit",
     cacheRead: "Cache read",
-    cacheWrite: "Cache write",
     totalTokens: "Total tokens",
     inputOutput: "Input / output",
     sessionCostEstimate: "Session cost estimate",
+    creditsBalance: "Credits remaining",
     details: "Conversation usage details",
   });
   const CHINESE_MESSAGES = Object.freeze({
@@ -26,10 +26,10 @@
     context: "上下文",
     latestCacheHit: "最近缓存命中率",
     cacheRead: "缓存读取",
-    cacheWrite: "缓存写入",
     totalTokens: "Token 总数",
     inputOutput: "输入 / 输出",
     sessionCostEstimate: "会话费用估算",
+    creditsBalance: "积分余额",
     details: "对话用量详情",
   });
 
@@ -50,6 +50,7 @@
   let retryTimer = null;
   let retryGeneration = 0;
   let boundThreadId = null;
+  let accountCreditsBalance = null;
   const snapshots = new Map();
   const controlsByComposer = new WeakMap();
 
@@ -95,7 +96,6 @@
     const turnId = nonEmptyString(value.turnId);
     const inputTokens = nonNegativeInteger(value.inputTokens);
     const cachedInputTokens = nonNegativeInteger(value.cachedInputTokens);
-    const cacheWriteInputTokens = nonNegativeInteger(value.cacheWriteInputTokens) ?? 0;
     const providedCacheHitRate =
       typeof value.cacheHitRatePercent === "number" && Number.isFinite(value.cacheHitRatePercent)
         ? Math.min(100, Math.max(0, value.cacheHitRatePercent))
@@ -115,6 +115,10 @@
       nonNegativeInteger(value.totalTokens) ?? inputTokens + outputTokens;
     const contextUsedTokens = nonNegativeInteger(value.contextUsedTokens);
     const contextWindowTokens = nonNegativeInteger(value.contextWindowTokens);
+    const creditsBalance =
+      typeof value.creditsBalance === "number" && Number.isFinite(value.creditsBalance) && value.creditsBalance >= 0
+        ? value.creditsBalance
+        : null;
     const totalCostUsd =
       typeof value.totalCostUsd === "number" && Number.isFinite(value.totalCostUsd) && value.totalCostUsd >= 0
         ? value.totalCostUsd
@@ -125,9 +129,9 @@
       turnId,
       inputTokens,
       cachedInputTokens,
-      cacheWriteInputTokens,
       outputTokens,
       totalTokens,
+      creditsBalance,
       ...(contextUsedTokens === undefined ? {} : { contextUsedTokens }),
       ...(contextWindowTokens === undefined ? {} : { contextWindowTokens }),
       ...(totalCostUsd === undefined ? {} : { totalCostUsd }),
@@ -332,7 +336,6 @@
     }
     addDetailRow(popover, messages.latestCacheHit, formatCacheHitRate(snapshot.cacheHitRatePercent));
     addDetailRow(popover, messages.cacheRead, formatTokenCount(snapshot.cachedInputTokens));
-    addDetailRow(popover, messages.cacheWrite, formatTokenCount(snapshot.cacheWriteInputTokens));
     addDetailRow(popover, messages.totalTokens, formatTokenCount(snapshot.totalTokens));
     addDetailRow(
       popover,
@@ -346,6 +349,11 @@
         `$${snapshot.totalCostUsd.toFixed(3)}`,
       );
     }
+    addDetailRow(
+      popover,
+      messages.creditsBalance,
+      snapshot.creditsBalance === null ? "—" : String(Math.floor(snapshot.creditsBalance)),
+    );
   }
 
   function createHUD() {
@@ -487,8 +495,8 @@
       snapshot.cacheHitRatePercent,
       snapshot.contextUsedTokens,
       snapshot.contextWindowTokens,
-      snapshot.cacheWriteInputTokens,
       snapshot.totalCostUsd,
+      snapshot.creditsBalance,
     ].join(":");
     if (control.renderKey !== renderKey) {
       const labelText = formatCacheHitRate(snapshot.cacheHitRatePercent);
@@ -663,7 +671,10 @@
   function setSnapshot(value) {
     const snapshot = normalizeSnapshot(value);
     if (!snapshot) return false;
-    snapshots.set(snapshot.threadId, snapshot);
+    if (Object.prototype.hasOwnProperty.call(value, "creditsBalance")) {
+      accountCreditsBalance = snapshot.creditsBalance;
+    }
+    snapshots.set(snapshot.threadId, { ...snapshot, creditsBalance: accountCreditsBalance });
     scheduleApply();
     scheduleSnapshotRetry();
     return true;

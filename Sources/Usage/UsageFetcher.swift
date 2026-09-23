@@ -56,10 +56,15 @@ enum UsageFetcher {
 
     static func parseCodexUsagePayload(_ obj: [String: Any]) -> AppUsage? {
         guard let rl = obj["rate_limit"] as? [String: Any] else { return nil }
+        let credits = obj["credits"] as? [String: Any]
+        let creditsBalance = doubleValue(credits?["balance"]).flatMap { value in
+            value.isFinite && value >= 0 ? value : nil
+        }
         return AppUsage(
             fiveHour: parseCodexWindow(rl["primary_window"]),
             weekly: parseCodexWindow(rl["secondary_window"], missingFallback: .unavailable),
-            plan: obj["plan_type"] as? String
+            plan: obj["plan_type"] as? String,
+            creditsBalance: creditsBalance
         )
     }
 

@@ -19,6 +19,7 @@ final class CodexRendererLiveBridge {
     private var operation: Task<Void, Never>?
     private var processIdentifier: Int32?
     private var latestSnapshot: CodexCacheHitSnapshot?
+    private var latestCreditsBalance: Double?
     private var didProjectInitialSnapshot = false
     private var blockedForProcess = false
     private var generation = 0
@@ -59,16 +60,17 @@ final class CodexRendererLiveBridge {
         launch(snapshot: latestSnapshot)
     }
 
-    func update(snapshot: CodexCacheHitSnapshot?) {
-        guard latestSnapshot != snapshot else { return }
+    func update(snapshot: CodexCacheHitSnapshot?, creditsBalance: Double?) {
+        guard latestSnapshot != snapshot || latestCreditsBalance != creditsBalance else { return }
         latestSnapshot = snapshot
+        latestCreditsBalance = creditsBalance
 
         guard let processIdentifier, !blockedForProcess else { return }
         switch state {
         case .attached:
             guard let snapshot else { return }
             if didProjectInitialSnapshot {
-                project(snapshot: snapshot)
+                project(snapshot: snapshot, creditsBalance: creditsBalance)
             } else {
                 launch(snapshot: snapshot)
             }
@@ -132,6 +134,7 @@ final class CodexRendererLiveBridge {
         visibleThreadOperation = nil
         processIdentifier = nil
         latestSnapshot = nil
+        latestCreditsBalance = nil
         didProjectInitialSnapshot = false
         blockedForProcess = false
         retryAttempt = 0
@@ -175,7 +178,8 @@ final class CodexRendererLiveBridge {
         }
 
         let currentGeneration = generation
-        let snapshotJSON = Self.snapshotJSON(snapshot)
+        let projectedCreditsBalance = latestCreditsBalance
+        let snapshotJSON = Self.snapshotJSON(snapshot, creditsBalance: projectedCreditsBalance)
         operation = Task { [weak self] in
             do {
                 let visibleThreadID = try await CodexRendererInspectorAttachment.install(
@@ -191,6 +195,7 @@ final class CodexRendererLiveBridge {
                     processIdentifier: processIdentifier,
                     visibleThreadID: visibleThreadID,
                     projectedSnapshot: snapshot,
+                    projectedCreditsBalance: projectedCreditsBalance
                 )
             } catch {
                 guard !Task.isCancelled else { return }
@@ -203,14 +208,15 @@ final class CodexRendererLiveBridge {
         }
     }
 
-    private func project(snapshot: CodexCacheHitSnapshot) {
+    private func project(snapshot: CodexCacheHitSnapshot, creditsBalance: Double?) {
         guard operation == nil,
               let processIdentifier,
-              let snapshotJSON = Self.snapshotJSON(snapshot) else {
+              let snapshotJSON = Self.snapshotJSON(snapshot, creditsBalance: creditsBalance) else {
             return
         }
 
         let currentGeneration = generation
+        let projectedCreditsBalance = creditsBalance
         operation = Task { [weak self] in
             do {
                 let visibleThreadID = try await CodexRendererInspectorAttachment.projectSnapshot(
@@ -222,7 +228,8 @@ final class CodexRendererLiveBridge {
                     generation: currentGeneration,
                     processIdentifier: processIdentifier,
                     visibleThreadID: visibleThreadID,
-                    projectedSnapshot: snapshot
+                    projectedSnapshot: snapshot,
+                    projectedCreditsBalance: projectedCreditsBalance
                 )
             } catch {
                 guard !Task.isCancelled else { return }
@@ -239,7 +246,8 @@ final class CodexRendererLiveBridge {
         generation: Int,
         processIdentifier: Int32,
         visibleThreadID: String?,
-        projectedSnapshot: CodexCacheHitSnapshot?
+        projectedSnapshot: CodexCacheHitSnapshot?,
+        projectedCreditsBalance: Double?
     ) {
         guard generation == self.generation,
               self.processIdentifier == processIdentifier else {
@@ -254,11 +262,16 @@ final class CodexRendererLiveBridge {
         transition(to: .attached(processIdentifier: processIdentifier))
         onVisibleThreadID?(visibleThreadID)
 
-        if projectedSnapshot == nil,
-           let latestSnapshot,
-           latestSnapshot != projectedSnapshot,
-           !didProjectInitialSnapshot {
-            launch(snapshot: latestSnapshot)
+        if let latestSnapshot {
+            let dataChanged = latestSnapshot != projectedSnapshot
+                || latestCreditsBalance != projectedCreditsBalance
+            if dataChanged {
+                if projectedSnapshot == nil || !didProjectInitialSnapshot {
+                    launch(snapshot: latestSnapshot)
+                } else {
+                    project(snapshot: latestSnapshot, creditsBalance: latestCreditsBalance)
+                }
+            }
         }
     }
 
@@ -266,7 +279,8 @@ final class CodexRendererLiveBridge {
         generation: Int,
         processIdentifier: Int32,
         visibleThreadID: String?,
-        projectedSnapshot: CodexCacheHitSnapshot
+        projectedSnapshot: CodexCacheHitSnapshot,
+        projectedCreditsBalance: Double?
     ) {
         guard generation == self.generation,
               self.processIdentifier == processIdentifier else {
@@ -281,8 +295,8 @@ final class CodexRendererLiveBridge {
         }
 
         if let latestSnapshot,
-           latestSnapshot != projectedSnapshot {
-            project(snapshot: latestSnapshot)
+           latestSnapshot != projectedSnapshot || latestCreditsBalance != projectedCreditsBalance {
+            project(snapshot: latestSnapshot, creditsBalance: latestCreditsBalance)
         }
     }
 
@@ -381,7 +395,10 @@ final class CodexRendererLiveBridge {
         onStateChange?(nextState)
     }
 
-    private static func snapshotJSON(_ snapshot: CodexCacheHitSnapshot?) -> String? {
+    private static func snapshotJSON(
+        _ snapshot: CodexCacheHitSnapshot?,
+        creditsBalance: Double?
+    ) -> String? {
         guard let snapshot else { return nil }
         guard let cacheHitRatePercent = snapshot.cacheHitRatePercent else {
             return nil
@@ -394,7 +411,8 @@ final class CodexRendererLiveBridge {
             "cacheWriteInputTokens": snapshot.cacheWriteInputTokens,
             "outputTokens": snapshot.outputTokens,
             "totalTokens": snapshot.totalTokens,
-            "cacheHitRatePercent": cacheHitRatePercent
+            "cacheHitRatePercent": cacheHitRatePercent,
+            "creditsBalance": creditsBalance.map { $0 as Any } ?? NSNull()
         ]
         if let contextUsedTokens = snapshot.contextUsedTokens {
             object["contextUsedTokens"] = contextUsedTokens

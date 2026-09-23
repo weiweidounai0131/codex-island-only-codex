@@ -624,6 +624,7 @@ private struct PeekPillOverlay: View {
     @ObservedObject private var usageStore = UsageStore.shared
     @ObservedObject private var alerts = AlertEngine.shared
     @ObservedObject private var quotaMode = CodexQuotaModeStore.shared
+    @ObservedObject private var creditDisplayMode = CodexCreditBalanceDisplayStore.shared
 
     var body: some View {
         let window = currentWindow
@@ -633,6 +634,7 @@ private struct PeekPillOverlay: View {
             tint: tint,
             alignment: provider == .claude ? .leading : .trailing,
             leadingUsage: weeklyPeekWindow,
+            creditsBalance: creditsBalanceForPeek,
             severity: severity
         )
         .padding(provider == .claude ? .leading : .trailing, 14)
@@ -673,6 +675,19 @@ private struct PeekPillOverlay: View {
         return windows[1].window
     }
 
+    private var creditsBalanceForPeek: Int? {
+        guard provider == .codex,
+              quotaMode.mode == .hourlyAndWeekly,
+              creditDisplayMode.isShowingCreditsBalance,
+              let balance = usageStore.codex.creditsBalance,
+              balance.isFinite,
+              balance >= 0,
+              balance < Double(Int.max) else {
+            return nil
+        }
+        return Int(balance.rounded(.down))
+    }
+
     private var severity: AlertEngine.Severity {
         switch provider {
         case .claude: return alerts.claudeSeverity
@@ -695,6 +710,9 @@ private struct PeekPillOverlay: View {
     }
 
     private func peekLabel(for window: WindowUsage, provider: String) -> String {
+        if let creditsBalanceForPeek {
+            return L10n.tr("Credits balance: %@", String(creditsBalanceForPeek))
+        }
         if window.error != nil && window.usedPercent == 0 {
             return L10n.tr("%@: no data for 5-hour window", provider)
         }

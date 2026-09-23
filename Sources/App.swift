@@ -44,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UsageStore.shared.startAutoRefresh()
         CostStore.shared.startAutoRefresh()
         taskActivityRuntime.start()
+        CodexCreditBalanceDisplayStore.shared.start()
         conversationUsageStore.start()
         codexM0Runtime.start()
 
@@ -55,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         conversationUsageStore.stop()
+        CodexCreditBalanceDisplayStore.shared.stop()
         codexM0Runtime.stop()
         taskActivityRuntime.stop()
     }
