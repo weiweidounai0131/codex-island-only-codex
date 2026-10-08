@@ -158,6 +158,20 @@
     return isElement(element) && Boolean(element.closest(`[${ROOT_ATTRIBUTE}], [${POPOVER_ATTRIBUTE}]`));
   }
 
+  function isVisibleInViewport(element) {
+    if (!isElement(element) || !element.isConnected || element.getClientRects().length === 0) return false;
+    for (let current = element; current; current = current.parentElement) {
+      const style = window.getComputedStyle(current);
+      if (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse") {
+        return false;
+      }
+    }
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0
+      && rect.right > 0 && rect.bottom > 0
+      && rect.left < window.innerWidth && rect.top < window.innerHeight;
+  }
+
   function ancestorAttribute(element, names) {
     let current = element;
     for (let depth = 0; current && depth < 10; depth += 1) {
@@ -199,7 +213,7 @@
   function contextUsageAnchor(composer) {
     const candidates = uniqueElements(
       [...composer.querySelectorAll('span[role="img"][aria-label]')].filter((element) => {
-        if (isInsideHUD(element)) return false;
+        if (isInsideHUD(element) || !isVisibleInViewport(element)) return false;
         return element.querySelectorAll("svg > circle").length === 2;
       }),
     );
@@ -212,7 +226,7 @@
     // when the Context ring has not mounted yet.
     const modelCandidates = uniqueElements(
       [...composer.querySelectorAll('button[aria-haspopup="menu"]')].filter((element) => {
-        if (isInsideHUD(element)) return false;
+        if (isInsideHUD(element) || !isVisibleInViewport(element)) return false;
         const label = `${element.getAttribute("aria-label") ?? ""} ${element.textContent ?? ""}`;
         return /model|模型/iu.test(label);
       }),
@@ -227,7 +241,7 @@
   function composerRoots() {
     const explicit = uniqueElements(
       document.querySelectorAll("[data-codex-composer-root], [data-codex-composer]"),
-    ).filter((element) => !isInsideHUD(element));
+    ).filter((element) => !isInsideHUD(element) && isVisibleInViewport(element));
     if (explicit.length > 0) return explicit;
 
     const roots = [];
@@ -235,12 +249,12 @@
       'textarea, [contenteditable="true"][role="textbox"], [role="textbox"]',
     );
     for (const editor of editors) {
-      if (isInsideHUD(editor)) continue;
+      if (isInsideHUD(editor) || !isVisibleInViewport(editor)) continue;
       let current = editor.parentElement;
       for (let depth = 0; current && depth < 8; depth += 1) {
         const hasSubmit = current.querySelector('button[type="submit"], button[aria-label*="Send" i]');
         const hasFooterAnchor = contextUsageAnchor(current);
-        if (hasSubmit || hasFooterAnchor || current.matches("form")) {
+        if ((hasSubmit || hasFooterAnchor || current.matches("form")) && isVisibleInViewport(current)) {
           roots.push(current);
           break;
         }
@@ -447,7 +461,9 @@
   function removeHUD(root) {
     if (!isElement(root)) return;
     const control = root._codexIslandControl;
-    if (control?.composer) controlsByComposer.delete(control.composer);
+    if (control?.composer && controlsByComposer.get(control.composer) === control) {
+      controlsByComposer.delete(control.composer);
+    }
     const popoverID = root.querySelector("button")?.getAttribute("aria-controls");
     if (popoverID) document.getElementById(popoverID)?.remove();
     root.remove();
@@ -469,7 +485,8 @@
     const anchor = contextUsageAnchor(composer);
     const threadId = threadIdForComposer(composer);
     const snapshot = threadId ? snapshots.get(threadId) : null;
-    if (!anchor || !threadId || snapshot?.cacheHitRatePercent === undefined) {
+    if (!isVisibleInViewport(composer) || !isVisibleInViewport(anchor)
+      || !threadId || snapshot?.cacheHitRatePercent === undefined) {
       if (current) removeHUD(current);
       return;
     }
@@ -532,11 +549,21 @@
     }
     const composers = composerRoots();
     for (const composer of composers) renderComposer(composer);
+    const seenComposers = new Set();
     for (const root of [...document.querySelectorAll(`[${ROOT_ATTRIBUTE}="true"]`)]) {
       const control = root._codexIslandControl;
-      if (!root.isConnected || !control?.composer?.isConnected || !control.anchor?.isConnected) {
+      const composer = control?.composer;
+      if (!root.isConnected || !isVisibleInViewport(composer) || !isVisibleInViewport(control?.anchor)) {
         removeHUD(root);
+        continue;
       }
+      const preferred = controlsByComposer.get(composer);
+      if ((preferred?.root?.isConnected && preferred.root !== root) || seenComposers.has(composer)) {
+        removeHUD(root);
+        continue;
+      }
+      seenComposers.add(composer);
+      if (!preferred) controlsByComposer.set(composer, control);
     }
     } finally {
       applying = false;
