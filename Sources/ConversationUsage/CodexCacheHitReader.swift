@@ -124,6 +124,11 @@ final class CodexCacheHitReader: @unchecked Sendable {
         var latestByTurn: [String: CodexCacheHitSnapshot] = [:]
 
         LogParseCache.streamLines(at: url, maxLineBytes: 1 << 20) { lineData in
+            guard lineData.range(of: Self.sessionMetaMarker) != nil
+                    || lineData.range(of: Self.turnContextMarker) != nil
+                    || lineData.range(of: Self.tokenCountMarker) != nil else {
+                return
+            }
             guard let raw = try? JSONSerialization.jsonObject(with: lineData)
                     as? [String: Any],
                   let type = raw["type"] as? String else {
@@ -236,4 +241,8 @@ final class CodexCacheHitReader: @unchecked Sendable {
         }
         return nil
     }
+
+    private static let sessionMetaMarker = Data("session_meta".utf8)
+    private static let turnContextMarker = Data("turn_context".utf8)
+    private static let tokenCountMarker = Data("token_count".utf8)
 }

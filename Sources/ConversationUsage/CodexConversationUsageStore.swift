@@ -33,6 +33,7 @@ final class CodexConversationUsageStore: ObservableObject {
     private var usageCancellable: AnyCancellable?
     private var pollTimer: Timer?
     private var started = false
+    private var refreshInProgress = false
     private var refreshGeneration = 0
     private var codexRunning = false
     private var visibleSessionID: String?
@@ -102,19 +103,20 @@ final class CodexConversationUsageStore: ObservableObject {
     }
 
     func refresh() {
-        guard started, preference.enabled, codexRunning else { return }
+        // Cold JSONL scans can exceed the polling interval; never duplicate one.
+        guard started, preference.enabled, codexRunning, !refreshInProgress else { return }
+        refreshInProgress = true
         let generation = refreshGeneration
         let reader = self.reader
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let snapshots = reader.read()
             DispatchQueue.main.async {
-                guard let self,
-                      self.started,
+                guard let self else { return }
+                self.refreshInProgress = false
+                guard self.started,
                       self.preference.enabled,
                       self.codexRunning,
-                      self.refreshGeneration == generation else {
-                    return
-                }
+                      self.refreshGeneration == generation else { return }
                 self.apply(snapshots)
             }
         }
@@ -174,7 +176,7 @@ final class CodexConversationUsageStore: ObservableObject {
 
     private func startPolling() {
         guard pollTimer == nil else { return }
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) {
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) {
             [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.refresh()
