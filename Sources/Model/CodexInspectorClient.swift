@@ -584,6 +584,28 @@ enum CodexRendererInspectorAttachment {
     })()
     """
 
+    private static let rendererStateExpression = """
+    (() => {
+      const roots = [...document.querySelectorAll('[data-codex-composer-root], [data-codex-composer]')];
+      const visible = roots.filter((element) => element.getClientRects().length > 0);
+      const composer = visible[0] ?? roots[0] ?? null;
+      const ids = composer ? [...new Set(
+        [...composer.querySelectorAll('[data-above-composer-conversation-id]')]
+          .map((element) => element.getAttribute('data-above-composer-conversation-id'))
+          .filter((value) => typeof value === 'string' && value.length > 0),
+      )] : [];
+      const hud = globalThis.__codexIslandCacheHUDV1;
+      const bridge = globalThis.__codexIslandCacheHUDBridgeV1;
+      const hudState = hud?.refresh?.() ?? hud?.inspect?.() ?? null;
+      const bridgeState = bridge?.inspect?.() ?? null;
+      return {
+        visibleThreadID: ids.length === 1 ? ids[0] : null,
+        hudReady: hudState?.enabled === true && hudState?.started === true,
+        bridgeReady: bridgeState?.enabled === true && bridgeState?.started === true,
+      };
+    })()
+    """
+
     private static func installDirectlyInRenderer(
         client: CodexInspectorClient,
         hudSource: String,
@@ -680,6 +702,19 @@ enum CodexRendererInspectorAttachment {
         return try await client.evaluate(visibleThreadExpression) as? String
     }
 
+    static func refreshState(processIdentifier: Int32) async throws -> CodexRendererRefreshState {
+        let client = try await CodexInspectorDiscovery.connect(to: processIdentifier)
+        defer { client.close() }
+        guard let value = try await client.evaluate(rendererStateExpression) as? [String: Any] else {
+            throw CodexInspectorError.rendererUnavailable
+        }
+        return CodexRendererRefreshState(
+            visibleThreadID: value["visibleThreadID"] as? String,
+            hudReady: value["hudReady"] as? Bool == true,
+            bridgeReady: value["bridgeReady"] as? Bool == true
+        )
+    }
+
     private static func rendererBootstrap(
         enabled: Bool,
         snapshotJSON: String?
@@ -709,4 +744,10 @@ enum CodexRendererInspectorAttachment {
         }
         return String(encoded.dropFirst().dropLast())
     }
+}
+
+struct CodexRendererRefreshState {
+    let visibleThreadID: String?
+    let hudReady: Bool
+    let bridgeReady: Bool
 }

@@ -611,14 +611,15 @@
 
   function relevantMutation(record) {
     if (isInsideHUD(record.target)) return false;
-    if (
-      record.type === "childList" &&
-      [...record.addedNodes, ...record.removedNodes].some((node) => {
-        if (!isElement(node)) return false;
-        return node.matches(`[${ROOT_ATTRIBUTE}], [${POPOVER_ATTRIBUTE}]`) || isInsideHUD(node);
-      })
-    ) {
-      return false;
+    if (record.type === "childList") {
+      const changedNodes = [...record.addedNodes, ...record.removedNodes];
+      if (changedNodes.length > 0 && changedNodes.every((node) =>
+        isElement(node) && (
+          node.matches(`[${ROOT_ATTRIBUTE}], [${POPOVER_ATTRIBUTE}]`) || isInsideHUD(node)
+        ),
+      )) {
+        return false;
+      }
     }
     if (record.type === "attributes") {
       return [
@@ -707,6 +708,21 @@
     return true;
   }
 
+  function inspect() {
+    return {
+      enabled,
+      started,
+      composerCount: composerRoots().length,
+      snapshotCount: snapshots.size,
+      hudCount: document.querySelectorAll(`[${ROOT_ATTRIBUTE}="true"]`).length,
+    };
+  }
+
+  function refresh() {
+    if (started && enabled) apply();
+    return inspect();
+  }
+
   function clearSnapshot(threadId) {
     const id = nonEmptyString(threadId);
     if (!id) return false;
@@ -729,15 +745,8 @@
     setSnapshot,
     clearSnapshot,
     bindVisibleThread,
-    inspect() {
-      return {
-        enabled,
-        started,
-        composerCount: composerRoots().length,
-        snapshotCount: snapshots.size,
-        hudCount: document.querySelectorAll(`[${ROOT_ATTRIBUTE}="true"]`).length,
-      };
-    },
+    refresh,
+    inspect,
   };
 
   window.addEventListener("message", (event) => {

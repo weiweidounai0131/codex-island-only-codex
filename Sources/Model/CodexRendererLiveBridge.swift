@@ -99,14 +99,14 @@ final class CodexRendererLiveBridge {
         let currentGeneration = generation
         visibleThreadOperation = Task { [weak self] in
             do {
-                let visibleThreadID = try await CodexRendererInspectorAttachment.visibleThreadID(
+                let rendererState = try await CodexRendererInspectorAttachment.refreshState(
                     processIdentifier: processIdentifier
                 )
                 guard !Task.isCancelled else { return }
-                self?.finishVisibleThread(
+                self?.finishRendererRefresh(
                     generation: currentGeneration,
                     processIdentifier: processIdentifier,
-                    visibleThreadID: visibleThreadID
+                    rendererState: rendererState
                 )
             } catch {
                 guard !Task.isCancelled else { return }
@@ -312,6 +312,26 @@ final class CodexRendererLiveBridge {
         visibleThreadOperation = nil
         if let visibleThreadID {
             onVisibleThreadID?(visibleThreadID)
+        }
+    }
+
+    private func finishRendererRefresh(
+        generation: Int,
+        processIdentifier: Int32,
+        rendererState: CodexRendererRefreshState
+    ) {
+        guard generation == self.generation,
+              self.processIdentifier == processIdentifier else {
+            return
+        }
+        visibleThreadOperation = nil
+        if let visibleThreadID = rendererState.visibleThreadID {
+            onVisibleThreadID?(visibleThreadID)
+        }
+        guard rendererState.hudReady, rendererState.bridgeReady else {
+            transition(to: .attaching(processIdentifier: processIdentifier))
+            launch(snapshot: latestSnapshot)
+            return
         }
     }
 
