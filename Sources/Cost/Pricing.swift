@@ -1,16 +1,14 @@
 import Foundation
 
-/// Embedded snapshot of per-million-token API prices in USD. Mirrors LiteLLM's
-/// `model_prices_and_context_window.json` for the models we actually expect
-/// in Claude Code and Codex CLI sessions, so totals cross-check against
-/// `npx ccusage` and `npx @ccusage/codex` to within rounding.
+/// Embedded snapshot of per-million-token API-equivalent prices in USD.
+/// The snapshot date tracks the active Codex model rates; legacy Claude
+/// entries remain at their previously verified prices.
 ///
-/// To refresh: bump `snapshotDate` and re-fetch the four rates per model
-/// from `https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json`.
+/// To refresh: bump `snapshotDate` and verify each active provider's rates.
 /// Unknown models silently price to $0 — same behavior as ccusage when
 /// LiteLLM has no entry.
 enum Pricing {
-    static let snapshotDate = "2026-06-10"
+    static let snapshotDate = "2026-11-02"
 
     struct Rates {
         let inputPerMillion: Double
@@ -59,6 +57,42 @@ enum Pricing {
         // OpenAI — Codex CLI tags conversations with the chat-completion
         // model name. cache_creation has no separate rate (OpenAI bills
         // cache writes at the standard input rate).
+        // Current GPT-6 standard API rates, per million tokens. Codex's
+        // subscription usage is not billed at these API-equivalent prices;
+        // this screen estimates comparable model cost.
+        "gpt-6-astra": Rates(
+            inputPerMillion: 10, outputPerMillion: 50,
+            cacheCreationPerMillion: 12.50, cacheReadPerMillion: 1.00
+        ),
+        "gpt-6.1-sol": Rates(
+            inputPerMillion: 2, outputPerMillion: 10,
+            cacheCreationPerMillion: 2.50, cacheReadPerMillion: 0.10
+        ),
+        "gpt-6.1-terra": Rates(
+            inputPerMillion: 1, outputPerMillion: 5,
+            cacheCreationPerMillion: 1.25, cacheReadPerMillion: 0.05
+        ),
+        "gpt-6-sol": Rates(
+            inputPerMillion: 2, outputPerMillion: 10,
+            cacheCreationPerMillion: 2.50, cacheReadPerMillion: 0.20
+        ),
+        "gpt-6-luna": Rates(
+            inputPerMillion: 0.10, outputPerMillion: 0.50,
+            cacheCreationPerMillion: 0.125, cacheReadPerMillion: 0.01
+        ),
+        // GPT-5.6 family, still present in this machine's local sessions.
+        "gpt-5.6-sol": Rates(
+            inputPerMillion: 4, outputPerMillion: 20,
+            cacheCreationPerMillion: 5, cacheReadPerMillion: 0.40
+        ),
+        "gpt-5.6-terra": Rates(
+            inputPerMillion: 2, outputPerMillion: 12,
+            cacheCreationPerMillion: 2.50, cacheReadPerMillion: 0.20
+        ),
+        "gpt-5.6-luna": Rates(
+            inputPerMillion: 0.20, outputPerMillion: 1.20,
+            cacheCreationPerMillion: 0.25, cacheReadPerMillion: 0.02
+        ),
         // Base reasoning models (newest first).
         "gpt-5.5": Rates(
             inputPerMillion: 5, outputPerMillion: 30,

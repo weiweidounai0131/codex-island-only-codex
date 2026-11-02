@@ -99,3 +99,13 @@ swiftc \
   Tests/CodexCacheHitTests.swift
 
 "$OUT_DIR/codex-cache-hit-tests"
+
+swiftc \
+  -parse-as-library \
+  -sdk "$SDKROOT" \
+  -o "$OUT_DIR/cost-pricing-tests" \
+  Sources/Cost/TokenEvent.swift \
+  Sources/Cost/Pricing.swift \
+  Tests/CostPricingTests.swift
+
+"$OUT_DIR/cost-pricing-tests"
